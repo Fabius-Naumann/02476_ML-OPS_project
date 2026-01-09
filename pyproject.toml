@@ -22,7 +22,7 @@ dependencies = [
     "matplotlib>=3.10",
     "torch>=2.0,<2.8.0",
     "torchinfo>=1.8",
-    "torchvision<0.23.0",
+    "torchvision<0.25.0",
     "typer>=0.15",
     "uvicorn>=0.34",
 ]
