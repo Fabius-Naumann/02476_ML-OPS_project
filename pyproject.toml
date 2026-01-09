@@ -1,0 +1,61 @@
+[build-system]
+requires = ["uv_build>=0.9.22,<0.10.0"]
+build-backend = "uv_build"
+
+[project]
+name = "sign_ml"
+version = "0.0.1"
+description = "Full ML pipeline for road sign classification."
+authors = [
+  { name = "group_18", email = "your@email.com" },
+]
+keywords = ["machine learning", "MLOps"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dvc>=3.66.0",
+    "fastapi>=0.115",
+    "matplotlib>=3.10",
+    "torch>=2.0,<2.8.0",
+    "torchinfo>=1.8",
+    "torchvision<0.23.0",
+    "typer>=0.15",
+    "uvicorn>=0.34",
+]
+
+[project.scripts]
+train = "sign_ml.train:train"
+evaluate = "sign_ml.evaluate:evaluate"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.6.9",
+    "invoke>=2.2.0",
+    "mkdocs-material>=9.4.6",
+    "mkdocs>=1.6.1",
+    "pre-commit>=4.1.0",
+    "pytest>=8.3.4",
+    "mkdocstrings-python>=1.12.2",
+    "ruff>=0.11",
+]
+
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu118" },
+]
+torchvision = [
+    { index = "pytorch-cu118" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.coverage.run]
+omit = ["tests/*"]
