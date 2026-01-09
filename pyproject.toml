@@ -20,7 +20,7 @@ dependencies = [
     "dvc>=3.66.0",
     "fastapi>=0.115",
     "matplotlib>=3.10",
-    "torch>=2.0,<2.8.0",
+    "torch>=2.0,<2.10.0",
     "torchinfo>=1.8",
     "torchvision<0.23.0",
     "typer>=0.15",
