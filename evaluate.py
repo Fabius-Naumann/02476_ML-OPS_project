@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from dataset import TrafficSignsDataset
+from data import TrafficSignsDataset
 from model import build_model
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -43,6 +43,12 @@ def main():
     num_classes = len(torch.unique(test_ds.targets))
 
     model = build_model(num_classes).to(DEVICE)
+
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(
+            f"Model file not found at '{MODEL_PATH}'. "
+            "Please train the model first to create this checkpoint."
+        )
     model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 
     criterion = nn.CrossEntropyLoss()
