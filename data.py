@@ -43,6 +43,14 @@ def preprocess_data():
         DATA_DIR = os.path.join(EXTRACT_ROOT, "traffic_signs", "DATA")
         TEST_DIR = os.path.join(EXTRACT_ROOT, "traffic_signs", "TEST")
 
+    if not (os.path.exists(DATA_DIR) and os.path.exists(TEST_DIR)):
+        raise FileNotFoundError(
+            f"Expected traffic sign data directories not found.\n"
+            f"Looked for either:\n"
+            f"  - {os.path.join(EXTRACT_ROOT, 'DATA')} and {os.path.join(EXTRACT_ROOT, 'TEST')}\n"
+            f"  - {os.path.join(EXTRACT_ROOT, 'traffic_signs', 'DATA')} and "
+            f"{os.path.join(EXTRACT_ROOT, 'traffic_signs', 'TEST')}"
+        )
     full_train_ds = datasets.ImageFolder(DATA_DIR, transform=PREPROCESS)
     test_ds = datasets.ImageFolder(TEST_DIR, transform=PREPROCESS)
 
@@ -95,7 +103,7 @@ class TrafficSignsDataset(Dataset):
         if not os.path.exists(file_path):
             preprocess_data()
 
-        data = torch.load(file_path)
+        data = torch.load(file_path, weights_only=True)
         self.images = data["images"]
         self.targets = data["labels"]
 
