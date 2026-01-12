@@ -1,19 +1,23 @@
 import torch
-from torch import nn
+import torch.nn as nn
+from torchvision.models import resnet18
 
 
-class Model(nn.Module):
-    """Just a dummy model to show how to structure your code"""
+class TrafficSignResNet(nn.Module):
+    def __init__(self, num_classes: int):
+        super(TrafficSignResNet, self).__init__()
 
-    def __init__(self):
-        super().__init__()
-        self.layer = nn.Linear(1, 1)
+        self.backbone = resnet18(weights=None)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.layer(x)
+        self.backbone.fc = nn.Linear(
+            self.backbone.fc.in_features,
+            num_classes
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
 
 
-if __name__ == "__main__":
-    model = Model()
-    x = torch.rand(1)
-    print(f"Output shape of model: {model(x).shape}")
+def build_model(num_classes: int):
+    model = TrafficSignResNet(num_classes)
+    return model
