@@ -93,7 +93,7 @@ def main():
         )
 
     torch.save(model.state_dict(), MODEL_OUT)
-    print(MODEL_OUT)
+    print(f"Model saved to: {MODEL_OUT}")
 
 
 if __name__ == "__main__":
