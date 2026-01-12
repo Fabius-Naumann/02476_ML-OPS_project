@@ -14,7 +14,7 @@ WORK_DIR = "work_dir_data_only"
 NEW_TRAIN_DIR = os.path.join(WORK_DIR, "new_train")
 TRAFFIC_DIR = os.path.join(WORK_DIR, "traffic")
 
-FINAL_ZIP = "Traffic_signs.zip"
+FINAL_ZIP = "traffic_signs_merged.zip"
 
 shutil.rmtree(WORK_DIR, ignore_errors=True)
 os.makedirs(NEW_TRAIN_DIR, exist_ok=True)
@@ -73,7 +73,7 @@ for class_id in class_ids:
         path = os.path.join(src_dir, fname)
         try:
             img = read_image(path)
-        except:
+        except Exception:
             continue
 
         if img.shape[0] != 3:
