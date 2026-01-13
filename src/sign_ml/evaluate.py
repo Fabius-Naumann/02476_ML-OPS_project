@@ -14,13 +14,9 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
+from sign_ml.utils import device_from_cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-def _device_from_cfg(device: str) -> torch.device:
-    if device.lower() == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(device)
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -48,7 +44,7 @@ def main(cfg: DictConfig):
     log.info(f"  name: {hparams.get('name', '')}")
     log.info(f"  training.batch_size: {hparams.training.batch_size}")
 
-    device = _device_from_cfg(str(cfg.device))
+    device = device_from_cfg(str(cfg.device))
     batch_size = int(hparams.training.batch_size)
     
     # Get model path from config file (cfg.paths.model_out in src/sign_ml/configs_files/config.yaml)

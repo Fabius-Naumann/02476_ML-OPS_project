@@ -23,6 +23,7 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
+from sign_ml.utils import device_from_cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -100,10 +101,7 @@ def validate(model, loader, criterion):
     return total_loss / total, 100.0 * correct / total
 
 
-def _device_from_cfg(device: str) -> torch.device:
-    if device.lower() == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(device)
+
 
 
 def train(cfg: DictConfig) -> Path:
@@ -116,7 +114,7 @@ def train(cfg: DictConfig) -> Path:
     seed = int(hparams.seed)
     _set_seed(seed)
 
-    device = _device_from_cfg(str(cfg.device))
+    device = device_from_cfg(str(cfg.device))
 
     train_ds = TrafficSignsDataset("train")
     val_ds = TrafficSignsDataset("val")
