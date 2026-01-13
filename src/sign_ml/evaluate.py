@@ -62,7 +62,7 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
     test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     log.info(f"Test samples: {len(test_ds)}")
-    log.info(f"Test Loss: {test_loss:.4f}")
+    log.info(f"Test Loss: {test_loss:.2f}%")
     log.info(f"Test Accuracy: {test_acc:.2f}%")
 
 if __name__ == "__main__":
