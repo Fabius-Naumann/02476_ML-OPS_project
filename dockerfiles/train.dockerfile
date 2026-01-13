@@ -1,12 +1,18 @@
-FROM ghcr.io/astral-sh/uv:python3.12-alpine AS base
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
+WORKDIR /app
+
+# Install dependencies from lockfile
 COPY uv.lock uv.lock
 COPY pyproject.toml pyproject.toml
 
 RUN uv sync --frozen --no-install-project
 
+# Copy project code
 COPY src src/
+COPY Train.py .
+COPY model.py .
+COPY configs configs/
+COPY README.md .
 
-RUN uv sync --frozen
-
-ENTRYPOINT ["uv", "run", "src/sign_ml/train.py"]
+CMD ["uv", "run", "python", "Train.py"]
