@@ -2871,6 +2871,7 @@ source = { editable = "." }
 dependencies = [
     { name = "dvc" },
     { name = "fastapi" },
+    { name = "hydra-core" },
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
@@ -2898,6 +2899,7 @@ dev = [
 requires-dist = [
     { name = "dvc", specifier = ">=3.66.0" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "hydra-core", specifier = ">=1.3.2" },
     { name = "matplotlib", specifier = ">=3.10" },
     { name = "numpy", specifier = "!=2.4.0" },
     { name = "pandas", specifier = ">=2.3.3" },
