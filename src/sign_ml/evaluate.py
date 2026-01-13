@@ -1,11 +1,18 @@
 from pathlib import Path
 
+import sys
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from src.sign_ml.data import TrafficSignsDataset
-from src.sign_ml.model import build_model
+# Allow running this file directly (e.g. `python src/sign_ml/evaluate.py`) while keeping
+# package-correct imports for VS Code navigation.
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from sign_ml.data import TrafficSignsDataset
+from sign_ml.model import build_model
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
