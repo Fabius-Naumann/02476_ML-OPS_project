@@ -1,12 +1,19 @@
 from pathlib import Path
 
+import sys
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from src.sign_ml.data import TrafficSignsDataset
-from src.sign_ml.model import build_model
+# Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
+# package-correct imports for VS Code navigation.
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+from sign_ml.data import TrafficSignsDataset
+from sign_ml.model import build_model
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -85,8 +92,8 @@ def main():
 
         print(
             f"Epoch [{epoch + 1}/{EPOCHS}] | "
-            f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.2f}% | "
-            f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc:.2f}%"
+            f"Train Loss: {train_loss:.2f}% | Train Acc: {train_acc:.2f}% | "
+            f"Val Loss: {val_loss:.2f}% | Val Acc: {val_acc:.2f}%"
         )
 
     torch.save(model.state_dict(), MODEL_OUT)
