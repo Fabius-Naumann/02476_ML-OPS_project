@@ -52,7 +52,7 @@ def get_wandb_init_kwargs(cfg: DictConfig, run_name: Optional[str] = None) -> Di
 
 
 def init_wandb(cfg: DictConfig, run_name: Optional[str] = None) -> tuple[bool, Optional[Exception]]:
-    #Initialize Weights & Biases for experiment tracking
+    # Initialize Weights & Biases for experiment tracking
 
     load_dotenv()
 

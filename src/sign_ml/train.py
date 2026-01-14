@@ -20,7 +20,7 @@ import wandb
 
 # Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
 # package-correct imports for VS Code navigation.
-if                              __package__ is None or __package__ == "":
+if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sign_ml.data import TrafficSignsDataset
