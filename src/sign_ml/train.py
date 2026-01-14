@@ -17,6 +17,10 @@ from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
 import wandb
+from dotenv import load_dotenv
+
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
 
 # Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
 # package-correct imports for VS Code navigation.
