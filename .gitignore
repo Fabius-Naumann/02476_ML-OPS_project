@@ -1,3 +1,7 @@
+outputs/**
+!outputs/.gitkeep
+models/**
+!models/.gitkeep
 # additional custom ignores
 data/**
 !data/.gitkeep
