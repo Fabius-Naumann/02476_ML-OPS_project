@@ -8,17 +8,14 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import hydra
-from omegaconf import DictConfig
-
-# Weights & Biases
-import wandb
+from omegaconf import DictConfig, OmegaConf
 
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg, init_wandb
+from sign_ml.utils import device_from_cfg
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -77,24 +74,6 @@ def main(cfg: DictConfig):
     logger.info("Test samples: {}", len(test_ds))
     logger.info("Test Loss: {:.4f}", test_loss)  
     logger.info("Test Accuracy: {:.2f}%", test_acc)
-
-    # Log evaluation metrics and model artifact to wandb (fail-soft)
-    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
-    if use_wandb:
-        wandb.log(
-            {
-                "test/loss": test_loss,
-                "test/accuracy": test_acc,
-                "test/samples": len(test_ds),
-            }
-        )
-        artifact_name = f"model-evaluation-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
-        artifact = wandb.Artifact(artifact_name, type="model")
-        artifact.add_file(str(model_out))
-        wandb.log_artifact(artifact)
-        wandb.finish()
-    elif wandb_error is not None:
-        logger.warning("WandB disabled during evaluation due to error: {}", wandb_error)
 
 if __name__ == "__main__":
     main()
