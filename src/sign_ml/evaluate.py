@@ -12,6 +12,10 @@ from omegaconf import DictConfig
 
 # Weights & Biases
 import wandb
+from dotenv import load_dotenv
+
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
 
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))

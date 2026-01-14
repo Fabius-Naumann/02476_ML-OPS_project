@@ -1,10 +1,10 @@
+import os
+
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import os
 import torch
 import wandb
-from dotenv import load_dotenv
 from omegaconf import DictConfig, OmegaConf
 
 
@@ -43,18 +43,21 @@ def get_wandb_init_kwargs(cfg: DictConfig, run_name: Optional[str] = None) -> Di
     if wandb_dir:
         Path(wandb_dir).mkdir(parents=True, exist_ok=True)
 
-    return {
+    kwargs: Dict[str, Any] = {
         "project": wandb_project,
         "entity": wandb_entity,
         "config": OmegaConf.to_container(cfg, resolve=True),
         "name": run_name,
     }
 
+    if wandb_dir:
+        kwargs["dir"] = wandb_dir
+
+    return kwargs
+
 
 def init_wandb(cfg: DictConfig, run_name: Optional[str] = None) -> tuple[bool, Optional[Exception]]:
     # Initialize Weights & Biases for experiment tracking
-
-    load_dotenv()
 
     try:
         wandb.init(**get_wandb_init_kwargs(cfg, run_name))
