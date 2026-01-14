@@ -9,7 +9,6 @@ import sys
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from torch.utils.data import DataLoader
 
 import hydra
@@ -27,8 +26,6 @@ from sign_ml.utils import device_from_cfg
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 import datetime
@@ -39,7 +36,6 @@ log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "train.log"
 logger.add(str(log_file))
-log = logger
 
 
 def _set_seed(seed: int) -> None:
@@ -63,15 +59,17 @@ def _resolve_path(base_dir: Path, path_str: str) -> Path:
     return path if path.is_absolute() else base_dir / path
 
 
-def train_one_epoch(model, loader, criterion, optimizer):
+def train_one_epoch(model, loader, criterion, optimizer, device: torch.device):
+    """Train the model for one epoch."""
+
     model.train()
     total_loss = 0.0
     correct = 0
     total = 0
 
     for images, labels in loader:
-        images = images.to(DEVICE)
-        labels = labels.to(DEVICE)
+        images = images.to(device)
+        labels = labels.to(device)
 
         optimizer.zero_grad()
         outputs = model(images)
@@ -87,7 +85,9 @@ def train_one_epoch(model, loader, criterion, optimizer):
     return total_loss / total, 100.0 * correct / total
 
 
-def validate(model, loader, criterion):
+def validate(model, loader, criterion, device: torch.device):
+    """Evaluate the model on a validation set."""
+
     model.eval()
     total_loss = 0.0
     correct = 0
@@ -95,8 +95,8 @@ def validate(model, loader, criterion):
 
     with torch.no_grad():
         for images, labels in loader:
-            images = images.to(DEVICE)
-            labels = labels.to(DEVICE)
+            images = images.to(device)
+            labels = labels.to(device)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -115,7 +115,7 @@ def validate(model, loader, criterion):
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
-    log.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
+    logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
 
@@ -140,13 +140,13 @@ def train(cfg: DictConfig) -> Path:
     model = build_model(num_classes).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = instantiate(cfg.optimizer, params=model.parameters())
+    optimizer = instantiate(cfg.optimizer, lr=float(hparams.optimizer.lr), params=model.parameters())
 
     for epoch in range(epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer)
-        val_loss, val_acc = validate(model, val_loader, criterion)
+        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        val_loss, val_acc = validate(model, val_loader, criterion, device)
 
-        log.info(
+        logger.info(
             "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
             epoch + 1,
             epochs,
@@ -159,7 +159,7 @@ def train(cfg: DictConfig) -> Path:
     model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
     model_out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), model_out)
-    log.info("Model saved to: {}", model_out)
+    logger.info("Model saved to: {}", model_out)
     return model_out
 
 

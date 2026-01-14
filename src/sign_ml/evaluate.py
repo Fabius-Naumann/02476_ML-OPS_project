@@ -49,11 +49,10 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 @hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
-    log = logger
-    log.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
-    log.info("Hyperparameters:")
-    log.info("  name: {}", hparams.get('name', ''))
-    log.info("  training.batch_size: {}", hparams.training.batch_size)
+    logger.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
+    logger.info("Hyperparameters:")
+    logger.info("  name: {}", hparams.get('name', ''))
+    logger.info("  training.batch_size: {}", hparams.training.batch_size)
 
     device = device_from_cfg(str(cfg.device))
     batch_size = int(hparams.training.batch_size)
@@ -72,9 +71,9 @@ def main(cfg: DictConfig):
     model.load_state_dict(torch.load(model_out, map_location=device))
     criterion = nn.CrossEntropyLoss()
     test_loss, test_acc = evaluate(model, test_loader, criterion, device)
-    log.info("Test samples: {}", len(test_ds))
-    log.info("Test Loss: {:.2f}%", test_loss)
-    log.info("Test Accuracy: {:.2f}%", test_acc)
+    logger.info("Test samples: {}", len(test_ds))
+    logger.info("Test Loss: {:.4f}", test_loss)  
+    logger.info("Test Accuracy: {:.2f}%", test_acc)
 
 if __name__ == "__main__":
     main()
