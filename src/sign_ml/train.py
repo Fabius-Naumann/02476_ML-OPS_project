@@ -15,6 +15,13 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
+# Weights & Biases
+import wandb
+from dotenv import load_dotenv
+
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
+
 # Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
 # package-correct imports for VS Code navigation.
 if __package__ is None or __package__ == "":
@@ -22,7 +29,7 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg
+from sign_ml.utils import device_from_cfg, init_wandb
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -122,6 +129,10 @@ def train(cfg: DictConfig) -> Path:
     seed = int(hparams.seed)
     _set_seed(seed)
 
+    # Initialize wandb (fail-soft if not permitted)
+    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
+    if not use_wandb and wandb_error is not None:
+        logger.warning("WandB disabled due to error: {}", wandb_error)
     device = device_from_cfg(str(cfg.device))
 
     train_ds = TrafficSignsDataset("train")
@@ -155,11 +166,29 @@ def train(cfg: DictConfig) -> Path:
             val_loss,
             val_acc,
         )
+        # Log metrics to wandb (if enabled)
+        if use_wandb:
+            wandb.log(
+                {
+                    "epoch": epoch + 1,
+                    "train/loss": train_loss,
+                    "train/accuracy": train_acc,
+                    "val/loss": val_loss,
+                    "val/accuracy": val_acc,
+                }
+            )
 
     model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
     model_out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), model_out)
     logger.info("Model saved to: {}", model_out)
+    # Log model artifact to wandb (if enabled)
+    if use_wandb:
+        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
+        artifact = wandb.Artifact(artifact_name, type="model")
+        artifact.add_file(str(model_out))
+        wandb.log_artifact(artifact)
+        wandb.finish()
     return model_out
 
 
