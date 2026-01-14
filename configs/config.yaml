@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - experiment: exp1
+
+# Base settings used by src/sign_ml/train.py
+device: auto
+
+optimizer:
+  _target_: torch.optim.Adam
+
+paths:
+  model_out: models/traffic_sign_model.pt
+
+hydra:
+  job:
+    chdir: true
