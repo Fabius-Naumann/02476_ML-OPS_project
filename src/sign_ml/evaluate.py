@@ -10,6 +10,11 @@ from torch.utils.data import DataLoader
 import hydra
 from omegaconf import DictConfig, OmegaConf
 
+# Weights & Biases
+import wandb
+from dotenv import load_dotenv
+import os
+
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -49,6 +54,8 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 @hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
+    # Load environment variables (for WANDB_API_KEY, etc.)
+    load_dotenv()
     logger.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
     logger.info("Hyperparameters:")
     logger.info("  name: {}", hparams.get('name', ''))
@@ -74,6 +81,36 @@ def main(cfg: DictConfig):
     logger.info("Test samples: {}", len(test_ds))
     logger.info("Test Loss: {:.4f}", test_loss)  
     logger.info("Test Accuracy: {:.2f}%", test_acc)
+
+    # Log evaluation metrics and model artifact to wandb (fail-soft)
+    try:
+        wandb_project = os.getenv("WANDB_PROJECT", "sign-ml")
+        wandb_entity = os.getenv("WANDB_ENTITY")
+
+        # Ensure WANDB_DIR exists if configured to avoid WinError 3 on Windows
+        wandb_dir = os.getenv("WANDB_DIR")
+        if wandb_dir:
+            Path(wandb_dir).mkdir(parents=True, exist_ok=True)
+
+        wandb.init(
+            project=wandb_project,
+            entity=wandb_entity,
+            config=OmegaConf.to_container(cfg, resolve=True),
+            name=hparams.get("name", None),
+        )
+        wandb.log(
+            {
+                "test/loss": test_loss,
+                "test/accuracy": test_acc,
+                "test/samples": len(test_ds),
+            }
+        )
+        artifact = wandb.Artifact("model", type="model")
+        artifact.add_file(str(model_out))
+        wandb.log_artifact(artifact)
+        wandb.finish()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WandB disabled during evaluation due to error: {}", exc)
 
 if __name__ == "__main__":
     main()

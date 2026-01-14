@@ -15,6 +15,11 @@ import hydra
 from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
+# Weights & Biases
+import wandb
+from dotenv import load_dotenv
+import os
+
 # Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
 # package-correct imports for VS Code navigation.
 if __package__ is None or __package__ == "":
@@ -115,6 +120,9 @@ def validate(model, loader, criterion, device: torch.device):
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
+    # Load environment variables (for WANDB_API_KEY, etc.)
+    load_dotenv()
+
     logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
@@ -122,6 +130,20 @@ def train(cfg: DictConfig) -> Path:
     seed = int(hparams.seed)
     _set_seed(seed)
 
+    # Initialize wandb (fail-soft if not permitted)
+    use_wandb = False
+    wandb_project = os.getenv("WANDB_PROJECT", "sign-ml")
+    wandb_entity = os.getenv("WANDB_ENTITY")
+    try:
+        wandb.init(
+            project=wandb_project,
+            entity=wandb_entity,
+            config=OmegaConf.to_container(cfg, resolve=True),
+            name=hparams.get("name", None),
+        )
+        use_wandb = True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("WandB disabled due to error: {}", exc)
     device = device_from_cfg(str(cfg.device))
 
     train_ds = TrafficSignsDataset("train")
@@ -155,11 +177,28 @@ def train(cfg: DictConfig) -> Path:
             val_loss,
             val_acc,
         )
+        # Log metrics to wandb (if enabled)
+        if use_wandb:
+            wandb.log(
+                {
+                    "epoch": epoch + 1,
+                    "train/loss": train_loss,
+                    "train/accuracy": train_acc,
+                    "val/loss": val_loss,
+                    "val/accuracy": val_acc,
+                }
+            )
 
     model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
     model_out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), model_out)
     logger.info("Model saved to: {}", model_out)
+    # Log model artifact to wandb (if enabled)
+    if use_wandb:
+        artifact = wandb.Artifact("model", type="model")
+        artifact.add_file(str(model_out))
+        wandb.log_artifact(artifact)
+        wandb.finish()
     return model_out
 
 
