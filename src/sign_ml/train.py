@@ -17,17 +17,15 @@ from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
 import wandb
-from dotenv import load_dotenv
-import os
 
 # Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
 # package-correct imports for VS Code navigation.
-if __package__ is None or __package__ == "":
+if                              __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg
+from sign_ml.utils import device_from_cfg, init_wandb
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -120,9 +118,6 @@ def validate(model, loader, criterion, device: torch.device):
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
-    # Load environment variables (for WANDB_API_KEY, etc.)
-    load_dotenv()
-
     logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
@@ -131,19 +126,9 @@ def train(cfg: DictConfig) -> Path:
     _set_seed(seed)
 
     # Initialize wandb (fail-soft if not permitted)
-    use_wandb = False
-    wandb_project = os.getenv("WANDB_PROJECT", "sign-ml")
-    wandb_entity = os.getenv("WANDB_ENTITY")
-    try:
-        wandb.init(
-            project=wandb_project,
-            entity=wandb_entity,
-            config=OmegaConf.to_container(cfg, resolve=True),
-            name=hparams.get("name", None),
-        )
-        use_wandb = True
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("WandB disabled due to error: {}", exc)
+    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
+    if not use_wandb and wandb_error is not None:
+        logger.warning("WandB disabled due to error: {}", wandb_error)
     device = device_from_cfg(str(cfg.device))
 
     train_ds = TrafficSignsDataset("train")
@@ -195,7 +180,8 @@ def train(cfg: DictConfig) -> Path:
     logger.info("Model saved to: {}", model_out)
     # Log model artifact to wandb (if enabled)
     if use_wandb:
-        artifact = wandb.Artifact("model", type="model")
+        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
+        artifact = wandb.Artifact(artifact_name, type="model")
         artifact.add_file(str(model_out))
         wandb.log_artifact(artifact)
         wandb.finish()

@@ -8,19 +8,17 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 # Weights & Biases
 import wandb
-from dotenv import load_dotenv
-import os
 
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg
+from sign_ml.utils import device_from_cfg, init_wandb
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -54,8 +52,6 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 @hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
-    # Load environment variables (for WANDB_API_KEY, etc.)
-    load_dotenv()
     logger.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
     logger.info("Hyperparameters:")
     logger.info("  name: {}", hparams.get('name', ''))
@@ -83,21 +79,8 @@ def main(cfg: DictConfig):
     logger.info("Test Accuracy: {:.2f}%", test_acc)
 
     # Log evaluation metrics and model artifact to wandb (fail-soft)
-    try:
-        wandb_project = os.getenv("WANDB_PROJECT", "sign-ml")
-        wandb_entity = os.getenv("WANDB_ENTITY")
-
-        # Ensure WANDB_DIR exists if configured to avoid WinError 3 on Windows
-        wandb_dir = os.getenv("WANDB_DIR")
-        if wandb_dir:
-            Path(wandb_dir).mkdir(parents=True, exist_ok=True)
-
-        wandb.init(
-            project=wandb_project,
-            entity=wandb_entity,
-            config=OmegaConf.to_container(cfg, resolve=True),
-            name=hparams.get("name", None),
-        )
+    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
+    if use_wandb:
         wandb.log(
             {
                 "test/loss": test_loss,
@@ -105,12 +88,13 @@ def main(cfg: DictConfig):
                 "test/samples": len(test_ds),
             }
         )
-        artifact = wandb.Artifact("model", type="model")
+        artifact_name = f"model-evaluation-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
+        artifact = wandb.Artifact(artifact_name, type="model")
         artifact.add_file(str(model_out))
         wandb.log_artifact(artifact)
         wandb.finish()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("WandB disabled during evaluation due to error: {}", exc)
+    elif wandb_error is not None:
+        logger.warning("WandB disabled during evaluation due to error: {}", wandb_error)
 
 if __name__ == "__main__":
     main()
