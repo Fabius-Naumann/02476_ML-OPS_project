@@ -1,0 +1,10 @@
+name: exp2
+
+seed: 42
+
+training:
+  batch_size: 32
+  epochs: 10
+
+optimizer:
+  lr: 0.01
