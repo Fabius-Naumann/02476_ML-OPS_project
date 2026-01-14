@@ -1,7 +1,8 @@
 
 from pathlib import Path
 import sys
-import logging
+from loguru import logger
+import datetime
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -16,7 +17,15 @@ from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Set up loguru to log to file in outputs/<date>/<time>/evaluate.log
+now = datetime.datetime.now()
+log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "evaluate.log"
+logger.add(str(log_file))
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -35,19 +44,21 @@ def evaluate(model, loader, criterion, device):
             total += labels.size(0)
     return total_loss / total, 100.0 * correct / total
 
-@hydra.main(config_path="configs_files", config_name="config", version_base=None)
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
+
+@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
-    log = logging.getLogger(__name__)
-    log.info(f"Evaluating experiment: {hparams.get('name', 'unknown')}")
-    log.info(f"Hyperparameters:")
-    log.info(f"  name: {hparams.get('name', '')}")
-    log.info(f"  training.batch_size: {hparams.training.batch_size}")
+    log = logger
+    log.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
+    log.info("Hyperparameters:")
+    log.info("  name: {}", hparams.get('name', ''))
+    log.info("  training.batch_size: {}", hparams.training.batch_size)
 
     device = device_from_cfg(str(cfg.device))
     batch_size = int(hparams.training.batch_size)
     
-    # Get model path from config file (cfg.paths.model_out in src/sign_ml/configs_files/config.yaml)
+    # Get model path from config file (cfg.paths.model_out in configs/config.yaml)
     model_out = Path(cfg.paths.model_out)
     if not model_out.is_absolute():
         model_out = BASE_DIR / model_out
@@ -61,9 +72,9 @@ def main(cfg: DictConfig):
     model.load_state_dict(torch.load(model_out, map_location=device))
     criterion = nn.CrossEntropyLoss()
     test_loss, test_acc = evaluate(model, test_loader, criterion, device)
-    log.info(f"Test samples: {len(test_ds)}")
-    log.info(f"Test Loss: {test_loss:.2f}%")
-    log.info(f"Test Accuracy: {test_acc:.2f}%")
+    log.info("Test samples: {}", len(test_ds))
+    log.info("Test Loss: {:.2f}%", test_loss)
+    log.info("Test Accuracy: {:.2f}%", test_acc)
 
 if __name__ == "__main__":
     main()

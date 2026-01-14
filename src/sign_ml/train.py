@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import contextlib
-import logging
+from loguru import logger
 import random
 
 import sys
@@ -29,9 +29,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-CONFIG_DIR = Path(__file__).resolve().parent / "configs_files"
+CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
-log = logging.getLogger(__name__)
+import datetime
+
+# Set up loguru to log to file in outputs/<date>/<time>/train.log
+now = datetime.datetime.now()
+log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
+log_dir.mkdir(parents=True, exist_ok=True)
+log_file = log_dir / "train.log"
+logger.add(str(log_file))
+log = logger
 
 
 def _set_seed(seed: int) -> None:
@@ -107,7 +115,7 @@ def validate(model, loader, criterion):
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
-    log.info("Configuration:\n%s", OmegaConf.to_yaml(cfg))
+    log.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
 
@@ -132,20 +140,14 @@ def train(cfg: DictConfig) -> Path:
     model = build_model(num_classes).to(device)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer_cfg = OmegaConf.create(
-        {
-            **OmegaConf.to_container(cfg.optimizer, resolve=True),
-            **OmegaConf.to_container(hparams.optimizer, resolve=True),
-        }
-    )
-    optimizer = instantiate(optimizer_cfg, params=model.parameters())
+    optimizer = instantiate(cfg.optimizer, params=model.parameters())
 
     for epoch in range(epochs):
         train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer)
         val_loss, val_acc = validate(model, val_loader, criterion)
 
         log.info(
-            "Epoch [%s/%s] | Train Loss: %.4f | Train Acc: %.2f%% | Val Loss: %.4f | Val Acc: %.2f%%",
+            "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
             epoch + 1,
             epochs,
             train_loss,
@@ -157,7 +159,7 @@ def train(cfg: DictConfig) -> Path:
     model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
     model_out.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), model_out)
-    log.info("Model saved to: %s", model_out)
+    log.info("Model saved to: {}", model_out)
     return model_out
 
 
