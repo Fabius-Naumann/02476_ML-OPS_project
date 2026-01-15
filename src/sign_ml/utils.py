@@ -1,5 +1,7 @@
 import os
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -15,8 +17,11 @@ def _next_counter_value(counter_file: Path) -> int:
     deterministically (e.g., sweep1, sweep2, ...).
 
     Notes:
-        This is best-effort and is primarily intended for a single agent running
-        locally. If you run multiple agents in parallel, counters may collide.
+        This uses a best-effort file lock to reduce collisions when multiple
+        sweep agents run in parallel on the same machine.
+
+        This does not coordinate across machines or containers that do not share
+        the same filesystem.
 
     Args:
         counter_file: Path to a text file storing the last used counter value.
@@ -25,18 +30,56 @@ def _next_counter_value(counter_file: Path) -> int:
         The next counter value (starting from 1).
     """
 
-    counter_file.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        raw = counter_file.read_text(encoding="utf-8").strip()
-        last_value = int(raw) if raw else 0
-    except FileNotFoundError:
-        last_value = 0
-    except ValueError:
-        last_value = 0
+    @contextmanager
+    def _exclusive_lock(file_obj) -> Iterator[None]:
+        fd = file_obj.fileno()
 
-    next_value = last_value + 1
-    counter_file.write_text(str(next_value), encoding="utf-8")
-    return next_value
+        try:
+            import fcntl  # type: ignore[import-not-found]
+        except Exception:  # noqa: BLE001
+            fcntl = None
+
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            return
+
+        import msvcrt
+
+        file_obj.seek(0)
+        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            file_obj.seek(0)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+    counter_file.parent.mkdir(parents=True, exist_ok=True)
+
+    fd = os.open(counter_file, os.O_RDWR | os.O_CREAT)
+    with os.fdopen(fd, "r+", encoding="utf-8") as f:
+        with _exclusive_lock(f):
+            f.seek(0)
+            raw = f.read().strip()
+            try:
+                last_value = int(raw) if raw else 0
+            except ValueError:
+                last_value = 0
+
+            next_value = last_value + 1
+            f.seek(0)
+            f.write(str(next_value))
+            f.truncate()
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+
+            return next_value
 
 
 def device_from_cfg(device: str) -> torch.device:
