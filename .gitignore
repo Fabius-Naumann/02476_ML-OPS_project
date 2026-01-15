@@ -13,6 +13,9 @@ data/**
 # Weights & Biases local runs/logs
 wandb/
 
+# Local W&B sweep counter state
+.wandb_sweep_counter_*.txt
+
 
 docs/site/
 

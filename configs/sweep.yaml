@@ -10,7 +10,7 @@ name: sweep # name of the sweep
 method: bayes
 
 metric:
-  name: val/accuracy # her name of the metric to optimize
+  name: val/accuracy # the name of the metric to optimize
   goal: maximize
 
 parameters:
@@ -24,7 +24,7 @@ parameters:
   experiment.training.epochs:
     values: [5, 10, 15]
 
-run_cap: 5 # her is the max number of runs for the sweep
+run_cap: 5 # the max number of runs for the sweep
 
 command:
   - ${env}
