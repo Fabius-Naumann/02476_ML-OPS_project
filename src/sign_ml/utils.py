@@ -3,11 +3,32 @@ import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import IO, Any, Dict, Optional
 
 import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
+
+
+def _find_repo_root(start: Path) -> Path:
+    """Find the repository root by searching for common marker files.
+
+    Args:
+        start: Starting path (file or directory) to begin searching from.
+
+    Returns:
+        Path to the detected repository root.
+    """
+
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+
+    for parent in (current, *current.parents):
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return parent
+
+    return current
 
 
 def _next_counter_value(counter_file: Path) -> int:
@@ -31,12 +52,12 @@ def _next_counter_value(counter_file: Path) -> int:
     """
 
     @contextmanager
-    def _exclusive_lock(file_obj) -> Iterator[None]:
+    def _exclusive_lock(file_obj: IO[str]) -> Iterator[None]:
         fd = file_obj.fileno()
 
         try:
             import fcntl  # type: ignore[import-not-found]
-        except Exception:  # noqa: BLE001
+        except ImportError:
             fcntl = None
 
         if fcntl is not None:
@@ -47,7 +68,11 @@ def _next_counter_value(counter_file: Path) -> int:
                 fcntl.flock(fd, fcntl.LOCK_UN)
             return
 
-        import msvcrt
+        try:
+            import msvcrt
+        except ImportError:
+            yield
+            return
 
         file_obj.seek(0)
         msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
@@ -77,6 +102,8 @@ def _next_counter_value(counter_file: Path) -> int:
             try:
                 os.fsync(f.fileno())
             except OSError:
+                # Best-effort durability: ignore fsync failures as this counter file
+                # is non-critical and an unsynced write only risks losing the latest increment.
                 pass
 
             return next_value
@@ -162,7 +189,7 @@ def init_wandb(
         is_sweep_run = sweep_id is not None
 
         if is_sweep_run:
-            repo_root = Path(__file__).resolve().parents[2]
+            repo_root = _find_repo_root(Path(__file__))
             counter_file = repo_root / f".wandb_sweep_counter_{sweep_id}.txt"
             idx = _next_counter_value(counter_file)
             run.name = f"sweep{idx}"

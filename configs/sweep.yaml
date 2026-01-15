@@ -6,7 +6,7 @@
 #   uv run wandb agent <sweep_id>
 
 program: src/sign_ml/train.py
-name: sweep # name of the sweep
+name: hparam-sweep # name of the sweep
 method: bayes
 
 metric:

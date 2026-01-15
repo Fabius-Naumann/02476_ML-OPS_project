@@ -133,6 +133,11 @@ def train(cfg: DictConfig) -> Path:
     use_wandb, wandb_error = init_wandb(cfg, run_name=None, group=hparams.get("name", None))
     if not use_wandb and wandb_error is not None:
         logger.warning("WandB disabled due to error: {}", wandb_error)
+
+    if use_wandb:
+        is_sweep_run = getattr(getattr(wandb, "run", None), "sweep_id", None) is not None or os.getenv("WANDB_SWEEP_ID")
+        if is_sweep_run:
+            logger.info("W&B sweep objective: validation/accuracy (maximize)")
     device = device_from_cfg(str(cfg.device))
 
     train_ds = TrafficSignsDataset("train")
