@@ -10,6 +10,9 @@ data/**
 !data/raw/
 !data/raw/.gitkeep
 
+# Weights & Biases local runs/logs
+wandb/
+
 
 docs/site/
 

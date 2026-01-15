@@ -130,7 +130,7 @@ def train(cfg: DictConfig) -> Path:
     _set_seed(seed)
 
     # Initialize wandb (fail-soft if not permitted)
-    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
+    use_wandb, wandb_error = init_wandb(cfg, run_name=None, group=hparams.get("name", None))
     if not use_wandb and wandb_error is not None:
         logger.warning("WandB disabled due to error: {}", wandb_error)
     device = device_from_cfg(str(cfg.device))
