@@ -21,6 +21,12 @@ def train(ctx: Context) -> None:
 
 
 @task
+def sweep(ctx: Context) -> None:
+    """Create a W&B sweep from configs/sweep.yaml."""
+    ctx.run("uv run python -m wandb sweep configs/sweep.yaml", echo=True, pty=not WINDOWS)
+
+
+@task
 def test(ctx: Context) -> None:
     """Run tests."""
     ctx.run("uv run coverage run -m pytest tests/", echo=True, pty=not WINDOWS)

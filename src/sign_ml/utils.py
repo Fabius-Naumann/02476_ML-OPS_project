@@ -1,11 +1,112 @@
 import os
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import IO, Any, Dict, Optional
 
 import torch
 import wandb
 from omegaconf import DictConfig, OmegaConf
+
+
+def _find_repo_root(start: Path) -> Path:
+    """Find the repository root by searching for common marker files.
+
+    Args:
+        start: Starting path (file or directory) to begin searching from.
+
+    Returns:
+        Path to the detected repository root.
+    """
+
+    current = start.resolve()
+    if current.is_file():
+        current = current.parent
+
+    for parent in (current, *current.parents):
+        if (parent / "pyproject.toml").exists() or (parent / ".git").exists():
+            return parent
+
+    return current
+
+
+def _next_counter_value(counter_file: Path) -> int:
+    """Return the next integer value for a local counter file.
+
+    The counter is stored on disk so consecutive sweep runs can be named
+    deterministically (e.g., sweep1, sweep2, ...).
+
+    Notes:
+        This uses a best-effort file lock to reduce collisions when multiple
+        sweep agents run in parallel on the same machine.
+
+        This does not coordinate across machines or containers that do not share
+        the same filesystem.
+
+    Args:
+        counter_file: Path to a text file storing the last used counter value.
+
+    Returns:
+        The next counter value (starting from 1).
+    """
+
+    @contextmanager
+    def _exclusive_lock(file_obj: IO[str]) -> Iterator[None]:
+        fd = file_obj.fileno()
+
+        try:
+            import fcntl  # type: ignore[import-not-found]
+        except ImportError:
+            fcntl = None
+
+        if fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            return
+
+        try:
+            import msvcrt
+        except ImportError:
+            yield
+            return
+
+        file_obj.seek(0)
+        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            file_obj.seek(0)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+
+    counter_file.parent.mkdir(parents=True, exist_ok=True)
+
+    fd = os.open(counter_file, os.O_RDWR | os.O_CREAT)
+    with os.fdopen(fd, "r+", encoding="utf-8") as f:
+        with _exclusive_lock(f):
+            f.seek(0)
+            raw = f.read().strip()
+            try:
+                last_value = int(raw) if raw else 0
+            except ValueError:
+                last_value = 0
+
+            next_value = last_value + 1
+            f.seek(0)
+            f.write(str(next_value))
+            f.truncate()
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                # Best-effort durability: ignore fsync failures as this counter file
+                # is non-critical and an unsynced write only risks losing the latest increment.
+                pass
+
+            return next_value
 
 
 def device_from_cfg(device: str) -> torch.device:
@@ -22,7 +123,9 @@ def device_from_cfg(device: str) -> torch.device:
     return torch.device(device)
 
 
-def get_wandb_init_kwargs(cfg: DictConfig, run_name: Optional[str] = None) -> Dict[str, Any]:
+def get_wandb_init_kwargs(
+    cfg: DictConfig, run_name: Optional[str] = None, group: Optional[str] = None
+) -> Dict[str, Any]:
     """Build keyword arguments for ``wandb.init`` from config and environment.
 
     This helper centralizes how Weights & Biases runs are configured, including
@@ -47,8 +150,12 @@ def get_wandb_init_kwargs(cfg: DictConfig, run_name: Optional[str] = None) -> Di
         "project": wandb_project,
         "entity": wandb_entity,
         "config": OmegaConf.to_container(cfg, resolve=True),
-        "name": run_name,
     }
+
+    if run_name is not None:
+        kwargs["name"] = run_name
+    if group is not None:
+        kwargs["group"] = group
 
     if wandb_dir:
         kwargs["dir"] = wandb_dir
@@ -56,12 +163,38 @@ def get_wandb_init_kwargs(cfg: DictConfig, run_name: Optional[str] = None) -> Di
     return kwargs
 
 
-def init_wandb(cfg: DictConfig, run_name: Optional[str] = None) -> tuple[bool, Optional[Exception]]:
-    # Initialize Weights & Biases for experiment tracking
+def init_wandb(
+    cfg: DictConfig, run_name: Optional[str] = None, group: Optional[str] = None
+) -> tuple[bool, Optional[Exception]]:
+    """Initialize Weights & Biases (fail-soft).
+
+    Args:
+        cfg: Hydra configuration for the current run.
+        run_name: Optional W&B run name. If omitted, W&B will auto-generate a unique name.
+        group: Optional W&B group name (useful to group sweep runs).
+
+    Returns:
+        Tuple (use_wandb, error). If initialization fails, use_wandb is False and error contains the exception.
+    """
 
     try:
-        wandb.init(**get_wandb_init_kwargs(cfg, run_name))
+        run = wandb.init(**get_wandb_init_kwargs(cfg, run_name=run_name, group=group))
     except Exception as exc:  # noqa: BLE001
         return False, exc
+
+    if run is not None and run_name is None:
+        # By default we let W&B generate unique names, but for sweeps it's often
+        # nicer to have deterministic local names like sweep1, sweep2, ...
+        sweep_id = getattr(run, "sweep_id", None) or os.getenv("WANDB_SWEEP_ID")
+        is_sweep_run = sweep_id is not None
+
+        if is_sweep_run:
+            repo_root = _find_repo_root(Path(__file__))
+            counter_file = repo_root / f".wandb_sweep_counter_{sweep_id}.txt"
+            idx = _next_counter_value(counter_file)
+            run.name = f"sweep{idx}"
+        else:
+            prefix = group or "run"
+            run.name = f"{prefix}-{run.id}"
 
     return True, None
