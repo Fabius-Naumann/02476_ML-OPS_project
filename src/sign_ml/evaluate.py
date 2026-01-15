@@ -83,7 +83,7 @@ def main(cfg: DictConfig):
     logger.info("Test Accuracy: {:.2f}%", test_acc)
 
     # Log evaluation metrics and model artifact to wandb (fail-soft)
-    use_wandb, wandb_error = init_wandb(cfg, hparams.get("name", None))
+    use_wandb, wandb_error = init_wandb(cfg, run_name=None, group=hparams.get("name", None))
     if use_wandb:
         wandb.log(
             {
