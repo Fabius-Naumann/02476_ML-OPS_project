@@ -1,10 +1,13 @@
 name: Code linting
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_run:
+    workflows: [Pre-commit CI]
+    types: [completed]
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
 
 jobs:
   format:
@@ -14,6 +17,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}   # make sure the pre-commit updated commit is used
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
