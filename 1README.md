@@ -361,7 +361,16 @@ will check the repositories and the code to verify your answers.
 >
 > Answer:
 
---- question 16 fill here ---
+When we ran into bugs, we mainly debugged by reading the full traceback and then reproducing the error with the smallest
+possible command (e.g., running `train.py`/`evaluate.py` with a fixed config and `epochs=1`). Many issues were related to
+configuration and paths, so we verified Hydra/OmegaConf resolution and ensured required environment variables (e.g.
+`PROJECT_ROOT`) were set consistently when running from different working directories. For data/model issues we validated
+dataset sizes, tensor shapes, label ranges, and device placement (CPU vs GPU), and added minimal logging around the
+failing sections (resolved paths, batch shapes, current epoch) to localize the problem quickly.
+
+We did not assume the code was perfect. Profiling showed that Weights & Biases logging could dominate runtime and hide the
+true bottlenecks, so we disabled W&B during profiling to measure the actual training/evaluation workload, while keeping it
+enabled for sweeps to preserve experiment tracking and visualizations.
 
 ## Working in the cloud
 
