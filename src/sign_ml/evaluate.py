@@ -1,5 +1,6 @@
 
 from pathlib import Path
+import os
 import sys
 from loguru import logger
 import datetime
@@ -11,7 +12,6 @@ import hydra
 from omegaconf import DictConfig
 
 # Weights & Biases
-import wandb
 from dotenv import load_dotenv
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
@@ -26,6 +26,7 @@ from sign_ml.utils import device_from_cfg, init_wandb
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 
 # Set up loguru to log to file in outputs/<date>/<time>/evaluate.log
 now = datetime.datetime.now()
@@ -39,10 +40,12 @@ def evaluate(model, loader, criterion, device):
     total_loss = 0.0
     correct = 0
     total = 0
-    with torch.no_grad():
+
+    use_non_blocking = device.type == "cuda"
+    with torch.inference_mode():
         for images, labels in loader:
-            images = images.to(device)
-            labels = labels.to(device)
+            images = images.to(device, non_blocking=use_non_blocking)
+            labels = labels.to(device, non_blocking=use_non_blocking)
             outputs = model(images)
             loss = criterion(outputs, labels)
             total_loss += loss.item() * images.size(0)
@@ -70,7 +73,8 @@ def main(cfg: DictConfig):
         model_out = BASE_DIR / model_out
 
     test_ds = TrafficSignsDataset("test")
-    test_loader = DataLoader(test_ds, batch_size=batch_size)
+    pin_memory = device.type == "cuda"
+    test_loader = DataLoader(test_ds, batch_size=batch_size, pin_memory=pin_memory)
     num_classes = len(torch.unique(test_ds.targets))
     model = build_model(num_classes).to(device)
     if not model_out.exists():
@@ -85,6 +89,8 @@ def main(cfg: DictConfig):
     # Log evaluation metrics and model artifact to wandb (fail-soft)
     use_wandb, wandb_error = init_wandb(cfg, run_name=None, group=hparams.get("name", None))
     if use_wandb:
+        import wandb  # type: ignore
+
         wandb.log(
             {
                 "test/loss": test_loss,

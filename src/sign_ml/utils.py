@@ -6,8 +6,61 @@ from pathlib import Path
 from typing import IO, Any, Dict, Optional
 
 import torch
-import wandb
 from omegaconf import DictConfig, OmegaConf
+
+
+def _is_truthy_env(var_name: str) -> bool:
+    """Return True when an environment variable is set to a truthy value."""
+    value = os.getenv(var_name)
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
+    """Return True when W&B should be disabled.
+
+    Disabling can be controlled via environment variables or via Hydra config.
+    By default, W&B is disabled unless explicitly enabled in config.
+    """
+    if _is_truthy_env("WANDB_DISABLED"):
+        return True
+
+    mode = os.getenv("WANDB_MODE")
+    if mode is not None and mode.strip().lower() == "disabled":
+        return True
+
+    if cfg is None:
+        return True
+
+    enabled_root: Optional[bool]
+    enabled_experiment: Optional[bool]
+
+    enabled_root = None
+    enabled_experiment = None
+
+    try:
+        wandb_cfg = cfg.get("wandb")
+        if wandb_cfg is not None and hasattr(wandb_cfg, "get"):
+            enabled_root = wandb_cfg.get("enabled")
+    except Exception:  # noqa: BLE001
+        enabled_root = None
+
+    try:
+        experiment_cfg = cfg.get("experiment")
+        if experiment_cfg is not None and hasattr(experiment_cfg, "get"):
+            experiment_wandb_cfg = experiment_cfg.get("wandb")
+            if experiment_wandb_cfg is not None and hasattr(experiment_wandb_cfg, "get"):
+                enabled_experiment = experiment_wandb_cfg.get("enabled")
+    except Exception:  # noqa: BLE001
+        enabled_experiment = None
+
+    if enabled_root is None and enabled_experiment is None:
+        return True
+    if enabled_root is False or enabled_experiment is False:
+        return True
+
+    return False
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -176,6 +229,14 @@ def init_wandb(
     Returns:
         Tuple (use_wandb, error). If initialization fails, use_wandb is False and error contains the exception.
     """
+
+    if _is_wandb_disabled(cfg):
+        return False, None
+
+    try:
+        import wandb  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        return False, exc
 
     try:
         run = wandb.init(**get_wandb_init_kwargs(cfg, run_name=run_name, group=group))

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import contextlib
+import os
 from loguru import logger
 import random
 
@@ -16,7 +17,6 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
-import wandb
 from dotenv import load_dotenv
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
@@ -32,17 +32,11 @@ from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 import datetime
-
-# Set up loguru to log to file in outputs/<date>/<time>/train.log
-now = datetime.datetime.now()
-log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
-log_dir.mkdir(parents=True, exist_ok=True)
-log_file = log_dir / "train.log"
-logger.add(str(log_file))
 
 
 def _set_seed(seed: int) -> None:
@@ -74,11 +68,13 @@ def train_one_epoch(model, loader, criterion, optimizer, device: torch.device):
     correct = 0
     total = 0
 
-    for images, labels in loader:
-        images = images.to(device)
-        labels = labels.to(device)
+    use_non_blocking = device.type == "cuda"
 
-        optimizer.zero_grad()
+    for images, labels in loader:
+        images = images.to(device, non_blocking=use_non_blocking)
+        labels = labels.to(device, non_blocking=use_non_blocking)
+
+        optimizer.zero_grad(set_to_none=True)
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
@@ -100,10 +96,12 @@ def validate(model, loader, criterion, device: torch.device):
     correct = 0
     total = 0
 
-    with torch.no_grad():
+    use_non_blocking = device.type == "cuda"
+
+    with torch.inference_mode():
         for images, labels in loader:
-            images = images.to(device)
-            labels = labels.to(device)
+            images = images.to(device, non_blocking=use_non_blocking)
+            labels = labels.to(device, non_blocking=use_non_blocking)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -122,6 +120,9 @@ def validate(model, loader, criterion, device: torch.device):
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
+    run_timestamp = datetime.datetime.now()
+    logger.add("train.log")
+
     logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
@@ -135,6 +136,8 @@ def train(cfg: DictConfig) -> Path:
         logger.warning("WandB disabled due to error: {}", wandb_error)
 
     if use_wandb:
+        import wandb  # type: ignore
+
         is_sweep_run = getattr(getattr(wandb, "run", None), "sweep_id", None) is not None or os.getenv("WANDB_SWEEP_ID")
         if is_sweep_run:
             logger.info("W&B sweep objective: validation/accuracy (maximize)")
@@ -149,8 +152,20 @@ def train(cfg: DictConfig) -> Path:
     batch_size = int(hparams.training.batch_size)
     epochs = int(hparams.training.epochs)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=generator)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, generator=generator)
+    pin_memory = device.type == "cuda"
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=generator,
+        pin_memory=pin_memory,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        generator=generator,
+        pin_memory=pin_memory,
+    )
 
     num_classes = len(torch.unique(train_ds.targets))
     model = build_model(num_classes).to(device)
@@ -173,6 +188,8 @@ def train(cfg: DictConfig) -> Path:
         )
         # Log metrics to wandb (if enabled)
         if use_wandb:
+            import wandb  # type: ignore
+
             wandb.log(
                 {
                     "epoch": epoch + 1,
@@ -189,7 +206,9 @@ def train(cfg: DictConfig) -> Path:
     logger.info("Model saved to: {}", model_out)
     # Log model artifact to wandb (if enabled)
     if use_wandb:
-        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
+        import wandb  # type: ignore
+
+        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{run_timestamp.strftime('%Y%m%d-%H%M%S')}"
         artifact = wandb.Artifact(artifact_name, type="model")
         artifact.add_file(str(model_out))
         wandb.log_artifact(artifact)
