@@ -23,7 +23,7 @@ jobs:
     - name: Install pre-commit
       uses: pre-commit/action@v3.0.1
       with:
-        continue-on-error: true
+        extra_args: --continue-on-error
 
     - name: List modified files
       run: git diff --name-only
