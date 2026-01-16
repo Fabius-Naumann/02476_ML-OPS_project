@@ -20,6 +20,7 @@ load_dotenv()
 if __package__ is None or __package__ == "":
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
