@@ -6,10 +6,7 @@ on:
   #   workflows: [Pre-commit CI]
   #   types: [completed]
   #   branches: [main]
-  # push:
-  #   branches: [main]
-  # pull_request:
-  #   branches: [main]
+
 jobs:
   test:
     runs-on: ${{ matrix.operating-system }}

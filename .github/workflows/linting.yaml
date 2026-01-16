@@ -4,10 +4,7 @@ on:
   workflow_run:
     workflows: [Pre-commit CI]
     types: [completed]
-  # push:
-  #   branches: [main]
-  # pull_request:
-  #   branches: [main]
+  workflow_dispatch:
 
 jobs:
   format:
@@ -22,6 +19,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          python-version: 3.12
 
       - name: Install dependencies
         run: |
