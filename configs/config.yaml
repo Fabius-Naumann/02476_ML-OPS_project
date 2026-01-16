@@ -12,5 +12,7 @@ paths:
   model_out: models/traffic_sign_model.pt
 
 hydra:
+  run:
+    dir: ${oc.env:PROJECT_ROOT}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
     chdir: true

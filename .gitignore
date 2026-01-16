@@ -16,6 +16,11 @@ wandb/
 # Local W&B sweep counter state
 .wandb_sweep_counter_*.txt
 
+# Profiling outputs (cProfile)
+src/sign_ml/profile_train.prof
+src/sign_ml/profile_evaluate.prof
+*.prof
+
 
 docs/site/
 
