@@ -1,0 +1,30 @@
+name: Build Docker images (M21)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build train image
+        run: |
+          docker build \
+            -f dockerfiles/train.dockerfile \
+            -t sign-ml-train:ci .
+
+      - name: Build api image
+        run: |
+          docker build \
+            -f dockerfiles/api.dockerfile \
+            -t sign-ml-api:ci .
