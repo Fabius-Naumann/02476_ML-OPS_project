@@ -1,41 +1,33 @@
+import contextlib
+import datetime
+import os
+import random
 from pathlib import Path
 
-import contextlib
-from loguru import logger
-import random
-
-import sys
-
+import hydra
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-
-import hydra
-from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
 import wandb
 from dotenv import load_dotenv
-
-# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
-load_dotenv()
-
-# Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
-# package-correct imports for VS Code navigation.
-if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
+from hydra.utils import instantiate
+from loguru import logger
+from omegaconf import DictConfig, OmegaConf
+from torch.utils.data import DataLoader
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
 
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+CONFIG_DIR = BASE_DIR / "configs"
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
-
-import datetime
 
 # Set up loguru to log to file in outputs/<date>/<time>/train.log
 now = datetime.datetime.now()
@@ -114,9 +106,6 @@ def validate(model, loader, criterion, device: torch.device):
             total += labels.size(0)
 
     return total_loss / total, 100.0 * correct / total
-
-
-
 
 
 def train(cfg: DictConfig) -> Path:

@@ -1,32 +1,28 @@
-
-from pathlib import Path
-import sys
-from loguru import logger
 import datetime
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+from pathlib import Path
 
 import hydra
-from omegaconf import DictConfig
+import torch
+import torch.nn as nn
 
 # Weights & Biases
 import wandb
 from dotenv import load_dotenv
-
-# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
-load_dotenv()
-
-if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-
+from loguru import logger
+from omegaconf import DictConfig
+from torch.utils.data import DataLoader
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
 
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
+CONFIG_DIR = BASE_DIR / "configs"
+
 
 # Set up loguru to log to file in outputs/<date>/<time>/evaluate.log
 now = datetime.datetime.now()
@@ -34,6 +30,7 @@ log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "evaluate.log"
 logger.add(str(log_file))
+
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -52,19 +49,18 @@ def evaluate(model, loader, criterion, device):
             total += labels.size(0)
     return total_loss / total, 100.0 * correct / total
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 @hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
-    logger.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
+    logger.info("Evaluating experiment: {}", hparams.get("name", "unknown"))
     logger.info("Hyperparameters:")
-    logger.info("  name: {}", hparams.get('name', ''))
+    logger.info("  name: {}", hparams.get("name", ""))
     logger.info("  training.batch_size: {}", hparams.training.batch_size)
 
     device = device_from_cfg(str(cfg.device))
     batch_size = int(hparams.training.batch_size)
-    
+
     # Get model path from config file (cfg.paths.model_out in configs/config.yaml)
     model_out = Path(cfg.paths.model_out)
     if not model_out.is_absolute():
@@ -80,7 +76,7 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
     test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     logger.info("Test samples: {}", len(test_ds))
-    logger.info("Test Loss: {:.4f}", test_loss)  
+    logger.info("Test Loss: {:.4f}", test_loss)
     logger.info("Test Accuracy: {:.2f}%", test_acc)
 
     # Log evaluation metrics and model artifact to wandb (fail-soft)
@@ -100,6 +96,7 @@ def main(cfg: DictConfig):
         wandb.finish()
     elif wandb_error is not None:
         logger.warning("WandB disabled during evaluation due to error: {}", wandb_error)
+
 
 if __name__ == "__main__":
     main()

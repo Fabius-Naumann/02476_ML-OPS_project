@@ -64,7 +64,7 @@ for class_id in class_ids:
     if not src_dir.exists():
         continue
 
-    selected = []
+    selected: list[Path] = []
 
     for fname in sorted(f.name for f in src_dir.iterdir()):
         if len(selected) == PER_CLASS:
