@@ -3,7 +3,7 @@
 Full machine learning pipeline for traffic sign classification.
 
 ## Project description
-The goal of the project is to classify traffic signs using machine learning.   
+The goal of the project is to classify traffic signs using machine learning.
 Initially, the project will use a simple kaggle dataset with around 6000 rgb images of 52 different types summing up to around 200MB. The images vary in size and are cropped to the main traffic sign.
 https://www.kaggle.com/datasets/tuanai/traffic-signs-dataset/data
 We will be training a CNN from scratch and might also try deploying a pre-trained model, fine-tuning it for traffic sign classification.
@@ -50,8 +50,6 @@ The directory structure of the project looks like this:
 ├── LICENSE
 ├── pyproject.toml            # Python project file
 ├── README.md                 # Project README
-├── requirements.txt          # Project requirements
-├── requirements_dev.txt      # Development requirements
 └── tasks.py                  # Project tasks
 ```
 
