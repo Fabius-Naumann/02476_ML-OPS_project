@@ -30,8 +30,11 @@ def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
     if mode is not None and mode.strip().lower() == "disabled":
         return True
 
+    is_sweep_agent_run = bool(os.getenv("WANDB_SWEEP_ID"))
+
     if cfg is None:
-        return True
+        # For sweeps, we default to enabling W&B so the sweep UI receives metrics.
+        return not is_sweep_agent_run
 
     enabled_root: Optional[bool]
     enabled_experiment: Optional[bool]
@@ -56,7 +59,8 @@ def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
         enabled_experiment = None
 
     if enabled_root is None and enabled_experiment is None:
-        return True
+        # No explicit config: for sweeps, enable; otherwise default to disabled.
+        return not is_sweep_agent_run
     if enabled_root is False or enabled_experiment is False:
         return True
 
