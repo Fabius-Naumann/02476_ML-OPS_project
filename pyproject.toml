@@ -54,13 +54,12 @@ dev = [
 
 [tool.uv.sources]
 torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
     { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
-    { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
-
 ]
 torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
     { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
-    { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
 ]
 
 [[tool.uv.index]]
