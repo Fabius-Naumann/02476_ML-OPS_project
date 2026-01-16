@@ -1,7 +1,6 @@
-import contextlib
 import os
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from types import ModuleType
 from typing import IO, Any, cast
@@ -101,7 +100,7 @@ def _next_counter_value(counter_file: Path) -> int:
         f.write(str(next_value))
         f.truncate()
         f.flush()
-        with contextlib.suppress(OSError):
+        with suppress(OSError):
             # Best-effort durability: ignore fsync failures as this counter file
             # is non-critical and an unsynced write only risks losing the latest increment.
             os.fsync(f.fileno())
