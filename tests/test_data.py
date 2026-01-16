@@ -1,9 +1,36 @@
+import os
+import inspect
+import pytest
+import torch
 from torch.utils.data import Dataset
 
-from sign_ml.data import MyDataset
+import sign_ml.data as data_module
 
 
-def test_my_dataset():
-    """Test the MyDataset class."""
-    dataset = MyDataset("data/raw")
+PROCESSED_TRAIN_PATH = "data/processed/train_preprocessed.pt"
+
+
+def _find_dataset_class():
+    """Find the Dataset subclass defined in sign_ml.data."""
+    for _, obj in inspect.getmembers(data_module, inspect.isclass):
+        if issubclass(obj, Dataset) and obj is not Dataset:
+            return obj
+    return None
+
+
+@pytest.mark.skipif(
+    not os.path.exists(PROCESSED_TRAIN_PATH),
+    reason="Processed training data not available yet"
+)
+def test_dataset_basic_functionality():
+    DatasetClass = _find_dataset_class()
+    assert DatasetClass is not None, "No Dataset subclass found in sign_ml.data"
+
+    dataset = DatasetClass(PROCESSED_TRAIN_PATH)
+
     assert isinstance(dataset, Dataset)
+    assert len(dataset) > 0
+
+    x, y = dataset[0]
+    assert isinstance(x, torch.Tensor)
+    assert isinstance(y, torch.Tensor)
