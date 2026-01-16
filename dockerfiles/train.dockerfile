@@ -10,6 +10,8 @@ RUN uv sync --frozen --no-install-project
 # Copy project code
 COPY src src/
 COPY configs configs/
+COPY README.md README.md
+COPY LICENSE LICENSE
 
 # Run training correctly
 CMD ["uv", "run", "python", "-m", "sign_ml.train"]
