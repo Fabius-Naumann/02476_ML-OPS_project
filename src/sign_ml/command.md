@@ -1,6 +1,6 @@
 ## Hyperparameter optimization (W&B sweeps)
 
-Run these from the repo root (so `configs/sweep.yaml` resolves correctly):
+Run these from the  root project (so `configs/sweep.yaml` resolves correctly):
 
 ```bash
 # One-time per machine/session (as needed)
@@ -57,11 +57,13 @@ python evaluate.py
 # python evaluate.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
 ```
 
-Then start TensorBoard (from the project root) and open <http://localhost:6006/#pytorch_profiler>:
 
+Run from the project root:
 ```bash
 tensorboard --logdir=./log
 ```
+Then start TensorBoard (from the project root) and open <http://localhost:6006/#pytorch_profiler>:
+
 
 Alternative: keep `+profiling.torch.export_chrome=true` (and disable TensorBoard export) to generate a `trace.json`,
 then open it via `chrome://tracing`.
