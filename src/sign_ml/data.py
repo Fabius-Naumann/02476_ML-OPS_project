@@ -150,7 +150,7 @@ if __name__ == "__main__":
         Args:
             preprocess: Whether to run preprocessing and exit.
             samples: Number of samples to visualize.
-            output: Optional output image path for the plot.
+            output: Output image path for the plot.
         """
 
         if preprocess:

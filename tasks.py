@@ -21,7 +21,7 @@ def viz_data(ctx: Context, samples: int = 16, output: str | None = None) -> None
 
     Args:
         samples: Number of samples to visualize.
-        split: Dataset split to visualize.
+
         output: Optional output image path for the plot.
     """
     cmd = f"uv run src/{PROJECT_NAME}/data.py --samples {samples}"
