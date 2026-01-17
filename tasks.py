@@ -48,7 +48,9 @@ def profile_data(ctx: Context, out: str = "profile_data.prof") -> None:
 
 
 @task
-def profile_train(ctx: Context, out: str = "profile_train.prof", epochs: int = 1, batch_size: int | None = None) -> None:
+def profile_train(
+    ctx: Context, out: str = "profile_train.prof", epochs: int = 1, batch_size: int | None = None
+) -> None:
     """Profile a short training run using cProfile.
 
     Args:

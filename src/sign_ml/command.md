@@ -70,6 +70,3 @@ Then start TensorBoard (from the project root) and open <http://localhost:6006/#
 
 Alternative: keep `+profiling.torch.export_chrome=true` (and disable TensorBoard export) to generate a `trace.json`,
 then open it via `chrome://tracing`.
-
-
-

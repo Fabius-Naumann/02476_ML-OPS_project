@@ -1,12 +1,8 @@
-
-from pathlib import Path
-import os
-import sys
-from loguru import logger
 import datetime
+import os
 from pathlib import Path
+
 import hydra
-from omegaconf import DictConfig, OmegaConf
 import torch
 import torch.nn as nn
 
@@ -116,7 +112,7 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
 
     # Default behavior: create TensorBoard profiler traces under project-root ./log/.
-  
+
     use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=True)
     export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=False)
     export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=True)
