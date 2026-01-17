@@ -1,12 +1,10 @@
 import inspect
-from pathlib import Path
 
 import pytest
 import torch
 from torch.utils.data import Dataset
 
 import sign_ml.data as data_module
-from sign_ml import PROCESSED_DIR
 
 
 def _find_dataset_class():
@@ -17,7 +15,12 @@ def _find_dataset_class():
     return None
 
 
-@pytest.mark.skipif(not Path.exists(PROCESSED_DIR), reason="Processed training data not available yet")
+def _is_data_available():
+    """Check if the processed data files exist."""
+    return data_module.TRAIN_FILE.exists() and data_module.VAL_FILE.exists() and data_module.TEST_FILE.exists()
+
+
+@pytest.mark.skipif(not _is_data_available(), reason="Processed training data not available yet")
 def test_dataset_basic_functionality():
     DatasetClass = _find_dataset_class()
     assert DatasetClass is not None, "No Dataset subclass found in sign_ml.data"
