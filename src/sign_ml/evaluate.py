@@ -4,22 +4,19 @@ import os
 import sys
 from loguru import logger
 import datetime
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-
+from pathlib import Path
 import hydra
 from omegaconf import DictConfig, OmegaConf
+import torch
+import torch.nn as nn
 
 # Weights & Biases
 from dotenv import load_dotenv
+from loguru import logger
+from omegaconf import DictConfig
+from torch.utils.data import DataLoader
 
-# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
-load_dotenv()
-
-if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-
+from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import (
@@ -30,6 +27,8 @@ from sign_ml.utils import (
     init_wandb,
 )
 
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
@@ -89,19 +88,18 @@ def evaluate_profiled(model, loader, criterion, device, *, prof, max_steps: int)
         return 0.0, 0.0
     return total_loss / total, 100.0 * correct / total
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
-@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
+@hydra.main(config_path=str(CONFIGS_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
-    logger.info("Evaluating experiment: {}", hparams.get('name', 'unknown'))
+    logger.info("Evaluating experiment: {}", hparams.get("name", "unknown"))
     logger.info("Hyperparameters:")
-    logger.info("  name: {}", hparams.get('name', ''))
+    logger.info("  name: {}", hparams.get("name", ""))
     logger.info("  training.batch_size: {}", hparams.training.batch_size)
 
     device = device_from_cfg(str(cfg.device))
     batch_size = int(hparams.training.batch_size)
-    
+
     # Get model path from config file (cfg.paths.model_out in configs/config.yaml)
     model_out = Path(cfg.paths.model_out)
     if not model_out.is_absolute():
@@ -177,6 +175,7 @@ def main(cfg: DictConfig):
         wandb.finish()
     elif wandb_error is not None:
         logger.warning("WandB disabled during evaluation due to error: {}", wandb_error)
+
 
 if __name__ == "__main__":
     main()

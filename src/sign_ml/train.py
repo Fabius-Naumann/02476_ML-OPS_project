@@ -1,32 +1,23 @@
-from pathlib import Path
-
 import contextlib
 import os
 from loguru import logger
+import datetime
 import random
+from pathlib import Path
 
-import sys
-
+import hydra
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-
-import hydra
-from hydra.utils import instantiate
-from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
 from dotenv import load_dotenv
+from hydra.utils import instantiate
+from loguru import logger
+from omegaconf import DictConfig, OmegaConf
+from torch.utils.data import DataLoader
 
-# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
-load_dotenv()
-
-# Allow running this file directly (e.g. `python src/sign_ml/train.py`) while keeping
-# package-correct imports for VS Code navigation.
-if __package__ is None or __package__ == "":
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-
+from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import (
@@ -37,12 +28,14 @@ from sign_ml.utils import (
     init_wandb,
 )
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
-
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
-import datetime
+# Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
+load_dotenv()
+
 
 
 def train_one_epoch_profiled(
@@ -93,6 +86,8 @@ def train_one_epoch_profiled(
 
 def _set_seed(seed: int) -> None:
     """Set random seeds for reproducible training."""
+
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
     random.seed(seed)
     np.random.seed(seed)
@@ -164,9 +159,6 @@ def validate(model, loader, criterion, device: torch.device):
             total += labels.size(0)
 
     return total_loss / total, 100.0 * correct / total
-
-
-
 
 
 def train(cfg: DictConfig) -> Path:
@@ -324,7 +316,7 @@ def train(cfg: DictConfig) -> Path:
     return model_out
 
 
-@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
+@hydra.main(config_path=str(CONFIGS_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Hydra entry point for training."""
 
