@@ -80,5 +80,8 @@ omit = ["tests/*"]
 omit = ["/tmp/*", "/private/var/folders/*", "*_remote_module_non_scriptable.py"]
 
 [tool.mypy]
-exclude = "tmp/.*"
+mypy_path = ["src"]
+files = ["src"]
+namespace_packages = false
+exclude = "^(tmp/.*|wandb/.*)$"
 disable_error_code = ["import-untyped"]

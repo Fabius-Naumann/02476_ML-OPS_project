@@ -34,7 +34,8 @@ preview = false
 [lint.isort]
 combine-as-imports = true
 force-sort-within-sections = false
-# known-first-party = ["your_top_level_package"]  # set per project if needed
+known-first-party = ["sign_ml"]
+known-third-party = ["wandb"]
 
 [format]
 quote-style = "double"
