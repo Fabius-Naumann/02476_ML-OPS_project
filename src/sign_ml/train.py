@@ -27,7 +27,6 @@ from sign_ml.utils import (
     init_wandb,
 )
 
-
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 
 
