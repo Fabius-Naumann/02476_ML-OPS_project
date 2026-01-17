@@ -57,7 +57,8 @@ def _torch_profile_dir(cfg: DictConfig) -> Path:
 
     out_dir = OmegaConf.select(cfg, "profiling.torch.out_dir", default=None)
     if out_dir is None:
-        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
+        # Default under project-root ./log so traces stay out of src/
+        return BASE_DIR / "log" / "sign_ml" / "profiling" / "torch"
     path = Path(str(out_dir))
     return path if path.is_absolute() else BASE_DIR / path
 
