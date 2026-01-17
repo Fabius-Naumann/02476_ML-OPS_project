@@ -26,7 +26,7 @@ from sign_ml.utils import (
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
 load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 
 now = datetime.datetime.now()
@@ -111,9 +111,9 @@ def main(cfg: DictConfig):
     model.load_state_dict(torch.load(model_out, map_location=device))
     criterion = nn.CrossEntropyLoss()
 
-    # Default behavior: create TensorBoard profiler traces under project-root ./log/.
+    # Optional behavior: when enabled, create TensorBoard profiler traces under project-root ./log/.
 
-    use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=True)
+    use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=False)
     export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=False)
     export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=True)
     max_steps = _int_from_cfg(cfg, "profiling.torch.steps", default=10)
