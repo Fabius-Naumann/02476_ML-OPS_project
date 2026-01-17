@@ -13,6 +13,6 @@ paths:
 
 hydra:
   run:
-    dir: ${hydra:runtime.cwd}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${oc.env:PROJECT_ROOT}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
   job:
     chdir: true

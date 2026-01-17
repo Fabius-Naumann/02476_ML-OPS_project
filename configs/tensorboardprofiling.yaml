@@ -13,7 +13,6 @@ paths:
 
 # Default profiling settings.
 # This enables a short torch.profiler run (first epoch only) and writes TensorBoard traces under ./log.
-# Disable with: `python train.py +profiling.torch.enabled=false`
 profiling:
   torch:
     enabled: true

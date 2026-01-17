@@ -41,15 +41,18 @@ python -c "import pstats; pstats.Stats('profile_evaluate.prof').sort_stats('cumu
 Your `train.py` and `evaluate.py` support an optional `torch.profiler` mode. It profiles only a small number of
 steps (default: 10) and writes a Chrome trace to:
 
-`src/sign_ml/profiling/torch/<timestamp>/trace.json`
+`log/sign_ml/profiling/torch/<timestamp>/trace.json`
 
 Run from inside `src/sign_ml/`:
 
 ```bash
 # Use the dedicated config that enables TensorBoard profiling output under project-root ./log/
+#Run from inside `src/sign_ml/`
+
 python train.py --config-name tensorboardprofiling
 
 # `evaluate.py` creates TensorBoard profiler traces under project-root ./log/ by default
+#Run from inside `src/sign_ml/`
 python evaluate.py
 
 # Alternative (explicit flags)
