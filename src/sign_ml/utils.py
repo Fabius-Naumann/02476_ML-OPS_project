@@ -2,6 +2,7 @@ import os
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import IO, Any, Dict, Optional
 
@@ -70,6 +71,43 @@ def _torch_tb_log_dir(cfg: DictConfig) -> Path:
         return BASE_DIR / "log" / "sign_ml"
     path = Path(str(out_dir))
     return path if path.is_absolute() else BASE_DIR / path
+
+
+def _get_torch_profiler_config(
+    cfg: DictConfig,
+    device: torch.device,
+    *,
+    steps: int,
+    timestamp: datetime,
+    export_tensorboard: bool,
+) -> tuple[list[Any], Any, Any, Path, Optional[Path]]:
+    """Build shared torch.profiler configuration for training/evaluation.
+
+    Returns the activities list, schedule, on_trace_ready callback, trace directory,
+    and optional TensorBoard directory.
+    """
+
+    from torch.profiler import ProfilerActivity, schedule as profiler_schedule, tensorboard_trace_handler
+
+    trace_dir = _torch_profile_dir(cfg) / timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+    trace_dir.mkdir(parents=True, exist_ok=True)
+
+    activities = [ProfilerActivity.CPU]
+    if device.type == "cuda":
+        activities.append(ProfilerActivity.CUDA)
+
+    tb_dir: Optional[Path] = None
+    schedule = None
+    on_trace_ready = None
+    if export_tensorboard:
+        tb_root = _torch_tb_log_dir(cfg)
+        tb_dir = tb_root / timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+        tb_dir.mkdir(parents=True, exist_ok=True)
+        on_trace_ready = tensorboard_trace_handler(str(tb_dir))
+        active_steps = max(steps - 1, 1)
+        schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+
+    return activities, schedule, on_trace_ready, trace_dir, tb_dir
 
 
 def _is_truthy_env(var_name: str) -> bool:

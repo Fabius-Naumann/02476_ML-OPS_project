@@ -22,7 +22,13 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import _bool_from_cfg, _torch_profile_dir, _torch_tb_log_dir, device_from_cfg, init_wandb
+from sign_ml.utils import (
+    _bool_from_cfg,
+    _get_torch_profiler_config,
+    _int_from_cfg,
+    device_from_cfg,
+    init_wandb,
+)
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -116,30 +122,18 @@ def main(cfg: DictConfig):
     use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=True)
     export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=False)
     export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=True)
-    max_steps = int(OmegaConf.select(cfg, "profiling.torch.steps", default=10))
+    max_steps = _int_from_cfg(cfg, "profiling.torch.steps", default=10)
 
     if use_torch_profiler:
-        from torch.profiler import ProfilerActivity, profile
+        from torch.profiler import profile
 
-        trace_dir = _torch_profile_dir(cfg) / now.strftime("%Y-%m-%d_%H-%M-%S")
-        trace_dir.mkdir(parents=True, exist_ok=True)
-
-        activities = [ProfilerActivity.CPU]
-        if device.type == "cuda":
-            activities.append(ProfilerActivity.CUDA)
-
-        tb_dir = None
-        on_trace_ready = None
-        schedule = None
-        if export_tensorboard:
-            from torch.profiler import schedule as profiler_schedule, tensorboard_trace_handler
-
-            tb_root = _torch_tb_log_dir(cfg)
-            tb_dir = tb_root / now.strftime("%Y-%m-%d_%H-%M-%S")
-            tb_dir.mkdir(parents=True, exist_ok=True)
-            on_trace_ready = tensorboard_trace_handler(str(tb_dir))
-            active_steps = max(max_steps - 1, 1)
-            schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+        activities, schedule, on_trace_ready, trace_dir, tb_dir = _get_torch_profiler_config(
+            cfg,
+            device,
+            steps=max_steps,
+            timestamp=now,
+            export_tensorboard=export_tensorboard,
+        )
 
         logger.info("torch.profiler enabled: profiling {} evaluation steps", max_steps)
         with profile(
@@ -161,7 +155,7 @@ def main(cfg: DictConfig):
     else:
         test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     logger.info("Test samples: {}", len(test_ds))
-    logger.info("Test Loss: {:.4f}", test_loss)  
+    logger.info("Test Loss: {:.4f}", test_loss)
     logger.info("Test Accuracy: {:.2f}%", test_acc)
 
     # Log evaluation metrics and model artifact to wandb (fail-soft)
