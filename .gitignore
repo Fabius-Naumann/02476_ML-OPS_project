@@ -19,7 +19,14 @@ wandb/
 # Profiling outputs (cProfile)
 src/sign_ml/profile_train.prof
 src/sign_ml/profile_evaluate.prof
+src/sign_ml/profiling/**
+!src/sign_ml/profiling/.gitkeep
+profiling/**
+!profiling/.gitkeep
 *.prof
+
+# TensorBoard / torch.profiler logs
+log/
 
 
 docs/site/

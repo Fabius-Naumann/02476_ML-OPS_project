@@ -1,0 +1,28 @@
+defaults:
+  - _self_
+  - experiment: exp1
+
+# Base settings used by src/sign_ml/train.py
+device: auto
+
+optimizer:
+  _target_: torch.optim.Adam
+
+paths:
+  model_out: models/traffic_sign_model.pt
+
+# Default profiling settings.
+# This enables a short torch.profiler run (first epoch only) and writes TensorBoard traces under ./log.
+# Disable with: `python train.py +profiling.torch.enabled=false`
+profiling:
+  torch:
+    enabled: true
+    export_tensorboard: true
+    export_chrome: false
+    steps: 10
+
+hydra:
+  run:
+    dir: ${oc.env:PROJECT_ROOT}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: true
