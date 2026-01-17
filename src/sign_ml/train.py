@@ -29,7 +29,14 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg, init_wandb
+from sign_ml.utils import (
+    _bool_from_cfg,
+    _int_from_cfg,
+    _torch_profile_dir,
+    _torch_tb_log_dir,
+    device_from_cfg,
+    init_wandb,
+)
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
@@ -37,44 +44,6 @@ os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 import datetime
-
-
-def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
-    value = OmegaConf.select(cfg, key, default=default)
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    return str(value).lower() in {"1", "true", "yes", "y", "on"}
-
-
-def _int_from_cfg(cfg: DictConfig, key: str, default: int) -> int:
-    value = OmegaConf.select(cfg, key, default=default)
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _torch_profile_dir(cfg: DictConfig) -> Path:
-    """Resolve an absolute output directory for torch.profiler traces."""
-
-    out_dir = OmegaConf.select(cfg, "profiling.torch.out_dir", default=None)
-    if out_dir is None:
-        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
-    path = Path(str(out_dir))
-    return path if path.is_absolute() else BASE_DIR / path
-
-
-def _torch_tb_log_dir(cfg: DictConfig) -> Path:
-    """Resolve an absolute output directory for TensorBoard profiler logs."""
-
-    out_dir = OmegaConf.select(cfg, "profiling.torch.tensorboard_dir", default=None)
-    if out_dir is None:
-        # Default to project-root ./log so users can run: tensorboard --logdir=./log
-        return BASE_DIR / "log" / "sign_ml"
-    path = Path(str(out_dir))
-    return path if path.is_absolute() else BASE_DIR / path
 
 
 def train_one_epoch_profiled(
@@ -207,6 +176,12 @@ def train(cfg: DictConfig) -> Path:
     run_timestamp = datetime.datetime.now()
     logger.add("train.log")
 
+    date_str = run_timestamp.strftime("%Y-%m-%d")
+    time_str = run_timestamp.strftime("%H-%M-%S")
+    log_dir = Path("outputs") / date_str / time_str
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger.add(str(log_dir / "train.log"))
+
     logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
     hparams = cfg.experiment
@@ -266,7 +241,7 @@ def train(cfg: DictConfig) -> Path:
         if use_torch_profiler and epoch == 0:
             from torch.profiler import ProfilerActivity, profile
 
-            trace_dir = _torch_profile_dir(cfg) / datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            trace_dir = _torch_profile_dir(cfg) / run_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
             trace_dir.mkdir(parents=True, exist_ok=True)
 
             activities = [ProfilerActivity.CPU]
@@ -280,7 +255,7 @@ def train(cfg: DictConfig) -> Path:
                 from torch.profiler import schedule as profiler_schedule, tensorboard_trace_handler
 
                 tb_root = _torch_tb_log_dir(cfg)
-                tb_dir = tb_root / datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                tb_dir = tb_root / run_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
                 tb_dir.mkdir(parents=True, exist_ok=True)
                 on_trace_ready = tensorboard_trace_handler(str(tb_dir))
                 # Profile a short run: 1 warmup step + remaining active steps
@@ -307,7 +282,7 @@ def train(cfg: DictConfig) -> Path:
             if export_tensorboard and tb_dir is not None:
                 logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
 
-            if export_chrome and not export_tensorboard:
+            if export_chrome:
                 trace_path = trace_dir / "trace.json"
                 prof.export_chrome_trace(str(trace_path))
                 logger.info("torch.profiler chrome trace written to: {}", trace_path)

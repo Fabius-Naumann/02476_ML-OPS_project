@@ -9,7 +9,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # Weights & Biases
 from dotenv import load_dotenv
@@ -22,7 +22,7 @@ if __package__ is None or __package__ == "":
 
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg, init_wandb
+from sign_ml.utils import _bool_from_cfg, _torch_profile_dir, _torch_tb_log_dir, device_from_cfg, init_wandb
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -36,31 +36,6 @@ log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "evaluate.log"
 logger.add(str(log_file))
 
-
-def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
-    value = cfg.get("profiling", {}).get("torch", {}).get(key.split(".")[-1], default)  # type: ignore[call-arg]
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return default
-    return str(value).lower() in {"1", "true", "yes", "y", "on"}
-
-
-def _torch_profile_dir(cfg: DictConfig) -> Path:
-    out_dir = cfg.get("profiling", {}).get("torch", {}).get("out_dir", None)  # type: ignore[call-arg]
-    if out_dir is None:
-        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
-    path = Path(str(out_dir))
-    return path if path.is_absolute() else BASE_DIR / path
-
-
-def _torch_tb_log_dir(cfg: DictConfig) -> Path:
-    out_dir = cfg.get("profiling", {}).get("torch", {}).get("tensorboard_dir", None)  # type: ignore[call-arg]
-    if out_dir is None:
-        # Default to project-root ./log so users can run: tensorboard --logdir=./log
-        return BASE_DIR / "log" / "sign_ml"
-    path = Path(str(out_dir))
-    return path if path.is_absolute() else BASE_DIR / path
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -137,12 +112,11 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
 
     # Default behavior: create TensorBoard profiler traces under project-root ./log/.
-    # Override on the CLI if you want to disable it:
-    #   python evaluate.py +profiling.torch.enabled=false
+  
     use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=True)
     export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=False)
     export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=True)
-    max_steps = int(cfg.get("profiling", {}).get("torch", {}).get("steps", 10))  # type: ignore[call-arg]
+    max_steps = int(OmegaConf.select(cfg, "profiling.torch.steps", default=10))
 
     if use_torch_profiler:
         from torch.profiler import ProfilerActivity, profile
@@ -180,7 +154,7 @@ def main(cfg: DictConfig):
 
         if export_tensorboard and tb_dir is not None:
             logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
-        if export_chrome and not export_tensorboard:
+        if export_chrome:
             trace_path = trace_dir / "trace_eval.json"
             prof.export_chrome_trace(str(trace_path))
             logger.info("torch.profiler chrome trace written to: {}", trace_path)

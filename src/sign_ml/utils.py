@@ -9,6 +9,69 @@ import torch
 from omegaconf import DictConfig, OmegaConf
 
 
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
+    """Return a boolean from config, accepting several truthy strings.
+
+    Args:
+        cfg: Hydra configuration object.
+        key: Dot-separated key to look up.
+        default: Fallback value when the key is missing or invalid.
+
+    Returns:
+        Parsed boolean value.
+    """
+
+    value = OmegaConf.select(cfg, key, default=default)
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _int_from_cfg(cfg: DictConfig, key: str, default: int) -> int:
+    """Return an integer from config, falling back on parse errors.
+
+    Args:
+        cfg: Hydra configuration object.
+        key: Dot-separated key to look up.
+        default: Fallback value when the key is missing or invalid.
+
+    Returns:
+        Parsed integer value.
+    """
+
+    value = OmegaConf.select(cfg, key, default=default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _torch_profile_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for torch.profiler traces."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.out_dir", default=None)
+    if out_dir is None:
+        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def _torch_tb_log_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for TensorBoard profiler logs."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.tensorboard_dir", default=None)
+    if out_dir is None:
+        # Default to project-root ./log so users can run: tensorboard --logdir=./log
+        return BASE_DIR / "log" / "sign_ml"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
 def _is_truthy_env(var_name: str) -> bool:
     """Return True when an environment variable is set to a truthy value."""
     value = os.getenv(var_name)
@@ -36,27 +99,8 @@ def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
         # For sweeps, we default to enabling W&B so the sweep UI receives metrics.
         return not is_sweep_agent_run
 
-    enabled_root: Optional[bool]
-    enabled_experiment: Optional[bool]
-
-    enabled_root = None
-    enabled_experiment = None
-
-    try:
-        wandb_cfg = cfg.get("wandb")
-        if wandb_cfg is not None and hasattr(wandb_cfg, "get"):
-            enabled_root = wandb_cfg.get("enabled")
-    except Exception:  # noqa: BLE001
-        enabled_root = None
-
-    try:
-        experiment_cfg = cfg.get("experiment")
-        if experiment_cfg is not None and hasattr(experiment_cfg, "get"):
-            experiment_wandb_cfg = experiment_cfg.get("wandb")
-            if experiment_wandb_cfg is not None and hasattr(experiment_wandb_cfg, "get"):
-                enabled_experiment = experiment_wandb_cfg.get("enabled")
-    except Exception:  # noqa: BLE001
-        enabled_experiment = None
+    enabled_root = OmegaConf.select(cfg, "wandb.enabled", default=None)
+    enabled_experiment = OmegaConf.select(cfg, "experiment.wandb.enabled", default=None)
 
     if enabled_root is None and enabled_experiment is None:
         # No explicit config: for sweeps, enable; otherwise default to disabled.
