@@ -31,9 +31,8 @@ from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import (
     _bool_from_cfg,
+    _get_torch_profiler_config,
     _int_from_cfg,
-    _torch_profile_dir,
-    _torch_tb_log_dir,
     device_from_cfg,
     init_wandb,
 )
@@ -239,28 +238,15 @@ def train(cfg: DictConfig) -> Path:
 
     for epoch in range(epochs):
         if use_torch_profiler and epoch == 0:
-            from torch.profiler import ProfilerActivity, profile
+            from torch.profiler import profile
 
-            trace_dir = _torch_profile_dir(cfg) / run_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
-            trace_dir.mkdir(parents=True, exist_ok=True)
-
-            activities = [ProfilerActivity.CPU]
-            if device.type == "cuda":
-                activities.append(ProfilerActivity.CUDA)
-
-            tb_dir = None
-            on_trace_ready = None
-            schedule = None
-            if export_tensorboard:
-                from torch.profiler import schedule as profiler_schedule, tensorboard_trace_handler
-
-                tb_root = _torch_tb_log_dir(cfg)
-                tb_dir = tb_root / run_timestamp.strftime("%Y-%m-%d_%H-%M-%S")
-                tb_dir.mkdir(parents=True, exist_ok=True)
-                on_trace_ready = tensorboard_trace_handler(str(tb_dir))
-                # Profile a short run: 1 warmup step + remaining active steps
-                active_steps = max(torch_profiler_steps - 1, 1)
-                schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+            activities, schedule, on_trace_ready, trace_dir, tb_dir = _get_torch_profiler_config(
+                cfg,
+                device,
+                steps=torch_profiler_steps,
+                timestamp=run_timestamp,
+                export_tensorboard=export_tensorboard,
+            )
 
             logger.info("torch.profiler enabled: profiling {} training steps", torch_profiler_steps)
             with profile(
@@ -288,7 +274,16 @@ def train(cfg: DictConfig) -> Path:
                 logger.info("torch.profiler chrome trace written to: {}", trace_path)
         else:
             train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss, val_acc = validate(model, val_loader, criterion, device)
+
+        if use_torch_profiler and epoch == 0:
+            val_loss, val_acc = float("nan"), float("nan")
+            logger.info(
+                "Skipping validation for profiled epoch 0 because training ran on a limited number of steps "
+                "(torch_profiler_steps={}).",
+                torch_profiler_steps,
+            )
+        else:
+            val_loss, val_acc = validate(model, val_loader, criterion, device)
 
         logger.info(
             "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
