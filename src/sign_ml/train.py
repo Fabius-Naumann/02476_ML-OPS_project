@@ -17,16 +17,13 @@ from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
+from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
 load_dotenv()
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CONFIG_DIR = BASE_DIR / "configs"
 
 
 # Set up loguru to log to file in outputs/<date>/<time>/train.log
@@ -39,6 +36,8 @@ logger.add(str(log_file))
 
 def _set_seed(seed: int) -> None:
     """Set random seeds for reproducible training."""
+
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
 
     random.seed(seed)
     np.random.seed(seed)
@@ -186,7 +185,7 @@ def train(cfg: DictConfig) -> Path:
     return model_out
 
 
-@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
+@hydra.main(config_path=str(CONFIGS_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig) -> None:
     """Hydra entry point for training."""
 
