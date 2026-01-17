@@ -14,7 +14,23 @@ PROFILING_DIR = Path("src") / PROJECT_NAME / "profiling"
 @task
 def preprocess_data(ctx: Context) -> None:
     """Preprocess data."""
-    ctx.run(f"uv run src/{PROJECT_NAME}/data.py data/raw data/processed", echo=True, pty=not WINDOWS)
+    ctx.run(f"uv run src/{PROJECT_NAME}/merge_data.py", echo=True, pty=not WINDOWS)
+    ctx.run(f"uv run src/{PROJECT_NAME}/data.py --preprocess", echo=True, pty=not WINDOWS)
+
+
+@task
+def viz_data(ctx: Context, samples: int = 16, output: str | None = None) -> None:
+    """Visualize data samples.
+
+    Args:
+        samples: Number of samples to visualize.
+
+        output: Optional output image path for the plot.
+    """
+    cmd = f"uv run src/{PROJECT_NAME}/data.py --samples {samples}"
+    if output:
+        cmd += f" --output {output}"
+    ctx.run(cmd, echo=True, pty=not WINDOWS)
 
 
 @task

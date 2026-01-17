@@ -1,10 +1,10 @@
 import os
-
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Any, Dict, Optional
+from types import ModuleType
+from typing import IO, Any, cast
 
 import torch
 from omegaconf import DictConfig, OmegaConf
@@ -195,17 +195,18 @@ def _next_counter_value(counter_file: Path) -> int:
     def _exclusive_lock(file_obj: IO[str]) -> Iterator[None]:
         fd = file_obj.fileno()
 
+        fcntl_module: ModuleType | None
         try:
-            import fcntl  # type: ignore[import-not-found]
+            import fcntl as fcntl_module  # type: ignore[import-not-found]
         except ImportError:
-            fcntl = None
+            fcntl_module = None
 
-        if fcntl is not None:
-            fcntl.flock(fd, fcntl.LOCK_EX)
+        if fcntl_module is not None:
+            fcntl_module.flock(fd, fcntl_module.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(fd, fcntl.LOCK_UN)
+                fcntl_module.flock(fd, fcntl_module.LOCK_UN)
             return
 
         try:
@@ -215,38 +216,36 @@ def _next_counter_value(counter_file: Path) -> int:
             return
 
         file_obj.seek(0)
-        msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
+        msvcrt_any = cast(Any, msvcrt)
+        msvcrt_any.locking(fd, msvcrt_any.LK_LOCK, 1)
         try:
             yield
         finally:
             file_obj.seek(0)
-            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            msvcrt_any.locking(fd, msvcrt_any.LK_UNLCK, 1)
 
     counter_file.parent.mkdir(parents=True, exist_ok=True)
 
     fd = os.open(counter_file, os.O_RDWR | os.O_CREAT)
-    with os.fdopen(fd, "r+", encoding="utf-8") as f:
-        with _exclusive_lock(f):
-            f.seek(0)
-            raw = f.read().strip()
-            try:
-                last_value = int(raw) if raw else 0
-            except ValueError:
-                last_value = 0
+    with os.fdopen(fd, "r+", encoding="utf-8") as f, _exclusive_lock(f):
+        f.seek(0)
+        raw = f.read().strip()
+        try:
+            last_value = int(raw) if raw else 0
+        except ValueError:
+            last_value = 0
 
-            next_value = last_value + 1
-            f.seek(0)
-            f.write(str(next_value))
-            f.truncate()
-            f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError:
-                # Best-effort durability: ignore fsync failures as this counter file
-                # is non-critical and an unsynced write only risks losing the latest increment.
-                pass
+        next_value = last_value + 1
+        f.seek(0)
+        f.write(str(next_value))
+        f.truncate()
+        f.flush()
+        with suppress(OSError):
+            # Best-effort durability: ignore fsync failures as this counter file
+            # is non-critical and an unsynced write only risks losing the latest increment.
+            os.fsync(f.fileno())
 
-            return next_value
+        return next_value
 
 
 def device_from_cfg(device: str) -> torch.device:
@@ -263,9 +262,7 @@ def device_from_cfg(device: str) -> torch.device:
     return torch.device(device)
 
 
-def get_wandb_init_kwargs(
-    cfg: DictConfig, run_name: Optional[str] = None, group: Optional[str] = None
-) -> Dict[str, Any]:
+def get_wandb_init_kwargs(cfg: DictConfig, run_name: str | None = None, group: str | None = None) -> dict[str, Any]:
     """Build keyword arguments for ``wandb.init`` from config and environment.
 
     This helper centralizes how Weights & Biases runs are configured, including
@@ -286,7 +283,7 @@ def get_wandb_init_kwargs(
     if wandb_dir:
         Path(wandb_dir).mkdir(parents=True, exist_ok=True)
 
-    kwargs: Dict[str, Any] = {
+    kwargs: dict[str, Any] = {
         "project": wandb_project,
         "entity": wandb_entity,
         "config": OmegaConf.to_container(cfg, resolve=True),
@@ -303,9 +300,7 @@ def get_wandb_init_kwargs(
     return kwargs
 
 
-def init_wandb(
-    cfg: DictConfig, run_name: Optional[str] = None, group: Optional[str] = None
-) -> tuple[bool, Optional[Exception]]:
+def init_wandb(cfg: DictConfig, run_name: str | None = None, group: str | None = None) -> tuple[bool, Exception | None]:
     """Initialize Weights & Biases (fail-soft).
 
     Args:
@@ -327,7 +322,7 @@ def init_wandb(
 
     try:
         run = wandb.init(**get_wandb_init_kwargs(cfg, run_name=run_name, group=group))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, exc
 
     if run is not None and run_name is None:
