@@ -350,8 +350,8 @@ will check the repositories and the code to verify your answers.
 
 ### Question 16
 
-> **When running into bugs while trying to run your experiments, how did you perform debugging? Additionally, did you**
-> **try to profile your code or do you think it is already perfect?**
+> **When running into bugs while trying to run your experiments, how did you perform debugging? Additionally, did you
+> try to profile your code or do you think it is already perfect?**
 >
 > Recommended answer length: 100-200 words.
 >
@@ -368,7 +368,9 @@ configuration and paths, so we verified Hydra/OmegaConf resolution and ensured r
 dataset sizes, tensor shapes, label ranges, and device placement (CPU vs GPU), and added minimal logging around the
 failing sections (resolved paths, batch shapes, current epoch) to localize the problem quickly.
 
-We did not assume the code was perfect. Profiling showed that Weights & Biases logging could dominate runtime and hide the
+We did not assume the code was perfect. We used both Python-level profiling (`cProfile`) and PyTorch profiling
+(`torch.profiler` exported to TensorBoard) on short, controlled runs (e.g., a small number of batches) to keep traces
+manageable and focus on the hot path. Profiling showed that Weights & Biases logging could dominate runtime and hide the
 true bottlenecks, so we disabled W&B during profiling to measure the actual training/evaluation workload, while keeping it
 enabled for sweeps to preserve experiment tracking and visualizations.
 
