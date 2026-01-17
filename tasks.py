@@ -27,7 +27,7 @@ def train(ctx: Context) -> None:
 def profile_data(ctx: Context, out: str = "profile_data.prof") -> None:
     """Profile the data preprocessing step using cProfile."""
     PROFILING_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = str(Path(out) if Path(out).parent != Path(".") else (PROFILING_DIR / out))
+    out_path = str(Path(out) if Path(out).is_absolute() else (PROFILING_DIR / out))
     ctx.run(f"uv run python -m cProfile -o {out_path} src/{PROJECT_NAME}/data.py", echo=True, pty=not WINDOWS)
 
 
@@ -43,7 +43,7 @@ def profile_train(ctx: Context, out: str = "profile_train.prof", epochs: int = 1
     """
 
     PROFILING_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = str(Path(out) if Path(out).parent != Path(".") else (PROFILING_DIR / out))
+    out_path = str(Path(out) if Path(out).is_absolute() else (PROFILING_DIR / out))
 
     overrides = [
         "hydra.job.chdir=false",
@@ -71,7 +71,7 @@ def profile_evaluate(ctx: Context, out: str = "profile_evaluate.prof", batch_siz
     """
 
     PROFILING_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = str(Path(out) if Path(out).parent != Path(".") else (PROFILING_DIR / out))
+    out_path = str(Path(out) if Path(out).is_absolute() else (PROFILING_DIR / out))
 
     overrides = [
         "hydra.job.chdir=false",
