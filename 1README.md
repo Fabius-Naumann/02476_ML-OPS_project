@@ -350,8 +350,7 @@ will check the repositories and the code to verify your answers.
 
 ### Question 16
 
-> **When running into bugs while trying to run your experiments, how did you perform debugging? Additionally, did you
-> try to profile your code or do you think it is already perfect?**
+> **When running into bugs while trying to run your experiments, how did you perform debugging? Additionally, did you try to profile your code or do you think it is already perfect?**
 >
 > Recommended answer length: 100-200 words.
 >
