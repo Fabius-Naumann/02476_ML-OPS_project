@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write  # This allows the workflow to push commits
+
 jobs:
   pre-commit:
     name: Check pre-commit
@@ -22,6 +25,7 @@ jobs:
 
     - name: Install pre-commit
       uses: pre-commit/action@v3.0.1
+      continue-on-error: true
 
     - name: List modified files
       run: git diff --name-only

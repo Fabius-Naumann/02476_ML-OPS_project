@@ -5,11 +5,12 @@ from pathlib import Path
 
 import pandas as pd
 import torch
+from loguru import logger
 from torchvision.io import read_image
 from torchvision.transforms.functional import rgb_to_grayscale
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-RAW_DIR = BASE_DIR / "data" / "raw"
+from sign_ml import RAW_DIR
+
 TRAIN_TAR = RAW_DIR / "Train.tar"
 TRAFFIC_ZIP = RAW_DIR / "traffic_signs.zip"
 
@@ -41,13 +42,15 @@ labels = pd.read_csv(labels_csv)
 class_ids = labels["ClassId"].astype(str).tolist()
 
 
-def is_night(img):
+def is_night(img: torch.Tensor) -> bool:
+    """Return True when the image is likely taken at night."""
     img = img.float() / 255.0
     gray = rgb_to_grayscale(img)
     return gray.mean().item() < 0.27
 
 
-def is_motion_blur(img):
+def is_motion_blur(img: torch.Tensor) -> bool:
+    """Return True when the image shows motion blur."""
     img = img.float() / 255.0
     gray = rgb_to_grayscale(img)[0]
     kernel = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
@@ -101,5 +104,5 @@ with zipfile.ZipFile(FINAL_ZIP, "w", zipfile.ZIP_DEFLATED) as zipf:
         if file.is_file():
             zipf.write(file, arcname=file.relative_to(TRAFFIC_DIR))
 
-print("DONE")
-print("ADDED TO DATA:", total_added)
+logger.info("DONE")
+logger.info("ADDED TO DATA: {}", total_added)
