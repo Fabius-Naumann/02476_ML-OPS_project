@@ -22,11 +22,11 @@ def test_dataset_basic_functionality():
     DatasetClass = _find_dataset_class()
     assert DatasetClass is not None, "No Dataset subclass found in sign_ml.data"
 
-    dataset = DatasetClass(PROCESSED_DIR)
+    dataset = data_module.TrafficSignsDataset("train")
 
-    assert isinstance(dataset, Dataset)
-    assert len(dataset) > 0
+    assert isinstance(dataset, Dataset), "Dataset instance is not of type torch.utils.data.Dataset"
+    assert len(dataset) > 0, "Dataset length should be greater than 0"
 
     x, y = dataset[0]
-    assert isinstance(x, torch.Tensor)
-    assert isinstance(y, torch.Tensor)
+    assert isinstance(x, torch.Tensor), "Data sample x should be a torch.Tensor"
+    assert isinstance(y, torch.Tensor), "Data sample y should be a torch.Tensor"
