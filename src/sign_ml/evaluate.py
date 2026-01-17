@@ -12,16 +12,13 @@ from loguru import logger
 from omegaconf import DictConfig
 from torch.utils.data import DataLoader
 
+from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
 from sign_ml.utils import device_from_cfg, init_wandb
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
 load_dotenv()
-
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CONFIG_DIR = BASE_DIR / "configs"
 
 
 # Set up loguru to log to file in outputs/<date>/<time>/evaluate.log
@@ -50,7 +47,7 @@ def evaluate(model, loader, criterion, device):
     return total_loss / total, 100.0 * correct / total
 
 
-@hydra.main(config_path=str(CONFIG_DIR), config_name="config", version_base=None)
+@hydra.main(config_path=str(CONFIGS_DIR), config_name="config", version_base=None)
 def main(cfg: DictConfig):
     hparams = cfg.experiment
     logger.info("Evaluating experiment: {}", hparams.get("name", "unknown"))
