@@ -9,7 +9,6 @@ from typing import IO, Any, cast
 import torch
 from omegaconf import DictConfig, OmegaConf
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 
@@ -317,7 +316,7 @@ def init_wandb(cfg: DictConfig, run_name: str | None = None, group: str | None =
 
     try:
         import wandb  # type: ignore
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return False, exc
 
     try:

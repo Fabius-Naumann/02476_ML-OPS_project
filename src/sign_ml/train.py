@@ -1,7 +1,6 @@
 import contextlib
-import os
-from loguru import logger
 import datetime
+import os
 import random
 from pathlib import Path
 
@@ -28,14 +27,12 @@ from sign_ml.utils import (
     init_wandb,
 )
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
 load_dotenv()
-
 
 
 def train_one_epoch_profiled(
