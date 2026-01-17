@@ -39,6 +39,90 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
 import datetime
 
 
+def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
+    value = OmegaConf.select(cfg, key, default=default)
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _int_from_cfg(cfg: DictConfig, key: str, default: int) -> int:
+    value = OmegaConf.select(cfg, key, default=default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _torch_profile_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for torch.profiler traces."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.out_dir", default=None)
+    if out_dir is None:
+        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def _torch_tb_log_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for TensorBoard profiler logs."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.tensorboard_dir", default=None)
+    if out_dir is None:
+        # Default to project-root ./log so users can run: tensorboard --logdir=./log
+        return BASE_DIR / "log" / "sign_ml"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def train_one_epoch_profiled(
+    model,
+    loader,
+    criterion,
+    optimizer,
+    device: torch.device,
+    *,
+    prof,
+    max_steps: int,
+):
+    """Train for a limited number of steps while calling `prof.step()` each iteration."""
+
+    model.train()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    use_non_blocking = device.type == "cuda"
+
+    steps = 0
+    for images, labels in loader:
+        if steps >= max_steps:
+            break
+
+        images = images.to(device, non_blocking=use_non_blocking)
+        labels = labels.to(device, non_blocking=use_non_blocking)
+
+        optimizer.zero_grad(set_to_none=True)
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item() * images.size(0)
+        _, preds = outputs.max(1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
+
+        prof.step()
+        steps += 1
+
+    if total == 0:
+        return 0.0, 0.0
+    return total_loss / total, 100.0 * correct / total
+
+
 def _set_seed(seed: int) -> None:
     """Set random seeds for reproducible training."""
 
@@ -173,8 +257,62 @@ def train(cfg: DictConfig) -> Path:
     criterion = nn.CrossEntropyLoss()
     optimizer = instantiate(cfg.optimizer, lr=float(hparams.optimizer.lr), params=model.parameters())
 
+    use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=False)
+    torch_profiler_steps = _int_from_cfg(cfg, "profiling.torch.steps", default=10)
+    export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=True)
+    export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=False)
+
     for epoch in range(epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        if use_torch_profiler and epoch == 0:
+            from torch.profiler import ProfilerActivity, profile
+
+            trace_dir = _torch_profile_dir(cfg) / datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            trace_dir.mkdir(parents=True, exist_ok=True)
+
+            activities = [ProfilerActivity.CPU]
+            if device.type == "cuda":
+                activities.append(ProfilerActivity.CUDA)
+
+            tb_dir = None
+            on_trace_ready = None
+            schedule = None
+            if export_tensorboard:
+                from torch.profiler import schedule as profiler_schedule, tensorboard_trace_handler
+
+                tb_root = _torch_tb_log_dir(cfg)
+                tb_dir = tb_root / datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                tb_dir.mkdir(parents=True, exist_ok=True)
+                on_trace_ready = tensorboard_trace_handler(str(tb_dir))
+                # Profile a short run: 1 warmup step + remaining active steps
+                active_steps = max(torch_profiler_steps - 1, 1)
+                schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+
+            logger.info("torch.profiler enabled: profiling {} training steps", torch_profiler_steps)
+            with profile(
+                activities=activities,
+                record_shapes=True,
+                schedule=schedule,
+                on_trace_ready=on_trace_ready,
+            ) as prof:
+                train_loss, train_acc = train_one_epoch_profiled(
+                    model,
+                    train_loader,
+                    criterion,
+                    optimizer,
+                    device,
+                    prof=prof,
+                    max_steps=torch_profiler_steps,
+                )
+
+            if export_tensorboard and tb_dir is not None:
+                logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
+
+            if export_chrome and not export_tensorboard:
+                trace_path = trace_dir / "trace.json"
+                prof.export_chrome_trace(str(trace_path))
+                logger.info("torch.profiler chrome trace written to: {}", trace_path)
+        else:
+            train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
         val_loss, val_acc = validate(model, val_loader, criterion, device)
 
         logger.info(

@@ -28,12 +28,39 @@ from sign_ml.utils import device_from_cfg, init_wandb
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
 
-# Set up loguru to log to file in outputs/<date>/<time>/evaluate.log
 now = datetime.datetime.now()
-log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
+
+# Set up loguru to log to file in <PROJECT_ROOT>/outputs/<date>/<time>/evaluate.log
+log_dir = BASE_DIR / "outputs" / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "evaluate.log"
 logger.add(str(log_file))
+
+
+def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
+    value = cfg.get("profiling", {}).get("torch", {}).get(key.split(".")[-1], default)  # type: ignore[call-arg]
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _torch_profile_dir(cfg: DictConfig) -> Path:
+    out_dir = cfg.get("profiling", {}).get("torch", {}).get("out_dir", None)  # type: ignore[call-arg]
+    if out_dir is None:
+        return BASE_DIR / "src" / "sign_ml" / "profiling" / "torch"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def _torch_tb_log_dir(cfg: DictConfig) -> Path:
+    out_dir = cfg.get("profiling", {}).get("torch", {}).get("tensorboard_dir", None)  # type: ignore[call-arg]
+    if out_dir is None:
+        # Default to project-root ./log so users can run: tensorboard --logdir=./log
+        return BASE_DIR / "log" / "sign_ml"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -52,6 +79,33 @@ def evaluate(model, loader, criterion, device):
             _, preds = outputs.max(1)
             correct += (preds == labels).sum().item()
             total += labels.size(0)
+    return total_loss / total, 100.0 * correct / total
+
+
+def evaluate_profiled(model, loader, criterion, device, *, prof, max_steps: int):
+    model.eval()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    use_non_blocking = device.type == "cuda"
+    steps = 0
+    with torch.inference_mode():
+        for images, labels in loader:
+            if steps >= max_steps:
+                break
+            images = images.to(device, non_blocking=use_non_blocking)
+            labels = labels.to(device, non_blocking=use_non_blocking)
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+            total_loss += loss.item() * images.size(0)
+            _, preds = outputs.max(1)
+            correct += (preds == labels).sum().item()
+            total += labels.size(0)
+            prof.step()
+            steps += 1
+    if total == 0:
+        return 0.0, 0.0
     return total_loss / total, 100.0 * correct / total
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "configs"
@@ -81,7 +135,57 @@ def main(cfg: DictConfig):
         raise FileNotFoundError(f"Model file not found at '{model_out}'. Please train the model first.")
     model.load_state_dict(torch.load(model_out, map_location=device))
     criterion = nn.CrossEntropyLoss()
-    test_loss, test_acc = evaluate(model, test_loader, criterion, device)
+
+    # Default behavior: create TensorBoard profiler traces under project-root ./log/.
+    # Override on the CLI if you want to disable it:
+    #   python evaluate.py +profiling.torch.enabled=false
+    use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=True)
+    export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=False)
+    export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=True)
+    max_steps = int(cfg.get("profiling", {}).get("torch", {}).get("steps", 10))  # type: ignore[call-arg]
+
+    if use_torch_profiler:
+        from torch.profiler import ProfilerActivity, profile
+
+        trace_dir = _torch_profile_dir(cfg) / now.strftime("%Y-%m-%d_%H-%M-%S")
+        trace_dir.mkdir(parents=True, exist_ok=True)
+
+        activities = [ProfilerActivity.CPU]
+        if device.type == "cuda":
+            activities.append(ProfilerActivity.CUDA)
+
+        tb_dir = None
+        on_trace_ready = None
+        schedule = None
+        if export_tensorboard:
+            from torch.profiler import schedule as profiler_schedule, tensorboard_trace_handler
+
+            tb_root = _torch_tb_log_dir(cfg)
+            tb_dir = tb_root / now.strftime("%Y-%m-%d_%H-%M-%S")
+            tb_dir.mkdir(parents=True, exist_ok=True)
+            on_trace_ready = tensorboard_trace_handler(str(tb_dir))
+            active_steps = max(max_steps - 1, 1)
+            schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+
+        logger.info("torch.profiler enabled: profiling {} evaluation steps", max_steps)
+        with profile(
+            activities=activities,
+            record_shapes=True,
+            schedule=schedule,
+            on_trace_ready=on_trace_ready,
+        ) as prof:
+            test_loss, test_acc = evaluate_profiled(
+                model, test_loader, criterion, device, prof=prof, max_steps=max_steps
+            )
+
+        if export_tensorboard and tb_dir is not None:
+            logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
+        if export_chrome and not export_tensorboard:
+            trace_path = trace_dir / "trace_eval.json"
+            prof.export_chrome_trace(str(trace_path))
+            logger.info("torch.profiler chrome trace written to: {}", trace_path)
+    else:
+        test_loss, test_acc = evaluate(model, test_loader, criterion, device)
     logger.info("Test samples: {}", len(test_ds))
     logger.info("Test Loss: {:.4f}", test_loss)  
     logger.info("Test Accuracy: {:.2f}%", test_acc)
