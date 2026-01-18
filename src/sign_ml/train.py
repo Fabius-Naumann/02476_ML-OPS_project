@@ -53,9 +53,8 @@ def train_one_epoch_profiled(
 
     use_non_blocking = device.type == "cuda"
 
-    steps = 0
-    for images, labels in loader:
-        if steps >= max_steps:
+    for step_idx, (images, labels) in enumerate(loader):
+        if step_idx >= max_steps:
             break
 
         images = images.to(device, non_blocking=use_non_blocking)
@@ -73,7 +72,6 @@ def train_one_epoch_profiled(
         total += labels.size(0)
 
         prof.step()
-        steps += 1
 
     if total == 0:
         return 0.0, 0.0
@@ -157,12 +155,67 @@ def validate(model, loader, criterion, device: torch.device):
     return total_loss / total, 100.0 * correct / total
 
 
+def _run_profiled_epoch_zero(
+    *,
+    cfg: DictConfig,
+    device: torch.device,
+    torch_profiler_steps: int,
+    run_timestamp: datetime.datetime,
+    export_tensorboard: bool,
+    export_chrome: bool,
+    model,
+    train_loader,
+    criterion,
+    optimizer,
+) -> tuple[float, float]:
+    """Run a limited, profiled training epoch (epoch 0).
+
+    Returns the training loss and accuracy computed over ``torch_profiler_steps`` iterations.
+    Also handles exporting TensorBoard traces and Chrome JSON traces if enabled in config.
+    """
+
+    from torch.profiler import profile
+
+    activities, schedule, on_trace_ready, trace_dir, tb_dir = _get_torch_profiler_config(
+        cfg,
+        device,
+        steps=torch_profiler_steps,
+        timestamp=run_timestamp,
+        export_tensorboard=export_tensorboard,
+    )
+
+    logger.info("torch.profiler enabled: profiling {} training steps", torch_profiler_steps)
+    with profile(
+        activities=activities,
+        record_shapes=True,
+        schedule=schedule,
+        on_trace_ready=on_trace_ready,
+    ) as prof:
+        train_loss, train_acc = train_one_epoch_profiled(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            prof=prof,
+            max_steps=torch_profiler_steps,
+        )
+
+    if export_tensorboard and tb_dir is not None:
+        logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
+
+    if export_chrome:
+        trace_path = trace_dir / "trace.json"
+        prof.export_chrome_trace(str(trace_path))
+        logger.info("torch.profiler chrome trace written to: {}", trace_path)
+
+    return train_loss, train_acc
+
+
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
 
     run_timestamp = datetime.datetime.now()
-    logger.add("train.log")
-
     date_str = run_timestamp.strftime("%Y-%m-%d")
     time_str = run_timestamp.strftime("%H-%M-%S")
     log_dir = Path("outputs") / date_str / time_str
@@ -226,40 +279,18 @@ def train(cfg: DictConfig) -> Path:
 
     for epoch in range(epochs):
         if use_torch_profiler and epoch == 0:
-            from torch.profiler import profile
-
-            activities, schedule, on_trace_ready, trace_dir, tb_dir = _get_torch_profiler_config(
-                cfg,
-                device,
-                steps=torch_profiler_steps,
-                timestamp=run_timestamp,
+            train_loss, train_acc = _run_profiled_epoch_zero(
+                cfg=cfg,
+                device=device,
+                torch_profiler_steps=torch_profiler_steps,
+                run_timestamp=run_timestamp,
                 export_tensorboard=export_tensorboard,
+                export_chrome=export_chrome,
+                model=model,
+                train_loader=train_loader,
+                criterion=criterion,
+                optimizer=optimizer,
             )
-
-            logger.info("torch.profiler enabled: profiling {} training steps", torch_profiler_steps)
-            with profile(
-                activities=activities,
-                record_shapes=True,
-                schedule=schedule,
-                on_trace_ready=on_trace_ready,
-            ) as prof:
-                train_loss, train_acc = train_one_epoch_profiled(
-                    model,
-                    train_loader,
-                    criterion,
-                    optimizer,
-                    device,
-                    prof=prof,
-                    max_steps=torch_profiler_steps,
-                )
-
-            if export_tensorboard and tb_dir is not None:
-                logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
-
-            if export_chrome:
-                trace_path = trace_dir / "trace.json"
-                prof.export_chrome_trace(str(trace_path))
-                logger.info("torch.profiler chrome trace written to: {}", trace_path)
         else:
             train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
 

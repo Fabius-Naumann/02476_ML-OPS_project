@@ -53,7 +53,7 @@ python train.py --config-name tensorboardprofiling
 
 # `evaluate.py` creates TensorBoard profiler traces under project-root ./log/ by default
 #Run from inside `src/sign_ml/`
-python evaluate.py
+python evaluate.py --config-name tensorboardprofiling
 
 # Alternative (explicit flags)
 # python train.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
