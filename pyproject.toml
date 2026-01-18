@@ -82,6 +82,9 @@ omit = [
 ]
 
 [tool.mypy]
-exclude = "tmp/.*"
+mypy_path = ["src"]
+files = ["src"]
+namespace_packages = false
+exclude = "^(tmp/.*|wandb/.*)$"
 disable_error_code = ["import-untyped"]
 ignore_missing_imports = true
