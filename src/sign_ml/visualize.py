@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Sequence, Sized
 from pathlib import Path
-from typing import Sized, cast
+from typing import cast
 
 import matplotlib.pyplot as plt
 import torch
