@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Sized, cast
 
 import matplotlib.pyplot as plt
 import torch
@@ -17,17 +18,7 @@ FIGURE_DPI = 150
 
 
 def _denormalize(img: torch.Tensor, mean: Sequence[float], std: Sequence[float]) -> torch.Tensor:
-    """Undo normalization for visualization.
-
-    Args:
-        img: Image tensor in CHW format.
-        mean: Per-channel mean values used in normalization.
-        std: Per-channel std values used in normalization.
-
-    Returns:
-        Denormalized image tensor.
-    """
-
+    """Undo normalization for visualization."""
     mean_tensor = torch.tensor(mean, dtype=img.dtype, device=img.device).view(-1, 1, 1)
     std_tensor = torch.tensor(std, dtype=img.dtype, device=img.device).view(-1, 1, 1)
     return (img * std_tensor + mean_tensor).clamp(0.0, 1.0)
@@ -40,25 +31,13 @@ def plot_samples(
     mean: Sequence[float] = (0.5, 0.5, 0.5),
     std: Sequence[float] = (0.5, 0.5, 0.5),
 ) -> Path | None:
-    """Plot a grid of sample images from a dataset.
+    """Plot a grid of sample images from a dataset."""
 
-    Args:
-        dataset: Dataset that yields (image, label) pairs.
-        samples: Number of samples to display.
-        output_path: Optional path to save the figure; uses a default if None.
-        mean: Mean used for normalization.
-        std: Std used for normalization.
+    # Tell mypy explicitly that this dataset has __len__
+    sized_dataset = cast(Sized, dataset)
 
-    Returns:
-        The output path if saved, otherwise None.
-    """
-
-    # NOTE:
-    # torch.utils.data.Dataset does not guarantee __len__ in its type definition,
-    # even though all practical datasets implement it. We explicitly ignore this
-    # mypy false-positive here.
-    count = max(1, min(samples, len(dataset)))  # type: ignore[arg-type]
-    indices = torch.randperm(len(dataset))[:count].tolist()  # type: ignore[arg-type]
+    count = max(1, min(samples, len(sized_dataset)))
+    indices = torch.randperm(len(sized_dataset))[:count].tolist()
 
     cols = math.ceil(math.sqrt(count))
     rows = math.ceil(count / cols)
@@ -75,8 +54,7 @@ def plot_samples(
         img_np = img.permute(1, 2, 0).cpu().numpy()
 
         if img_np.shape[-1] == 1:
-            img_np = img_np.squeeze(-1)
-            ax.imshow(img_np, cmap="gray")
+            ax.imshow(img_np.squeeze(-1), cmap="gray")
         else:
             ax.imshow(img_np)
 
