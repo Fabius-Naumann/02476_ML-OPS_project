@@ -17,9 +17,11 @@ REQUEST_LATENCY = Histogram(
 
 app = FastAPI()
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
