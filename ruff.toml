@@ -27,8 +27,6 @@ extend-exclude = [
 # RUF: Ruff-specific improvements (incl. unused noqa, etc.)
 select = ["E", "F", "W", "I", "UP", "B", "C90", "SIM", "ARG", "PTH", "RET", "RUF", "C4"]
 
-# Skip long-line warnings; formatter governs layout
-# ignore = ["E501"]
 preview = false
 
 [lint.isort]
@@ -40,6 +38,7 @@ force-sort-within-sections = false
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
+line-ending = "lf"
 
 [lint.per-file-ignores]
 "tests/**" = ["S101", "D"]
