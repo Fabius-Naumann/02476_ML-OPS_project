@@ -70,3 +70,48 @@ Then start TensorBoard (from the project root) and open <http://localhost:6006/#
 
 Alternative: keep `+profiling.torch.export_chrome=true` (and disable TensorBoard export) to generate a `trace.json`,
 then open it via `chrome://tracing`.
+
+---
+
+## Development tooling (pre-commit, ruff, mypy)
+
+We use `pre-commit` to run formatting, linting, type-checking, and `uv lock` checks.
+Prefer the `uv` workflow if you have it available; use the pip fallback only if you don't.
+
+### Recommended (uv)
+
+```bash
+# Install uv (if you don't have it)
+python -m pip install -U uv
+
+# Install pre-commit and hook dependencies (managed via uv)
+uv run pre-commit install
+uv run pre-commit run --all-files
+```
+
+### Fallback (pip, without uv)
+
+What this does:
+- Installs the tooling (Ruff = formatting/linting, mypy = type-checking) and sets up the `pre-commit` git hook.
+- Runs all hooks on the entire repo, so formatting/lint/type issues are caught locally before CI.
+
+Tip: Installing the Ruff VS Code extension helps catch issues while you edit.
+
+Use this if you don't have `uv` available and want to use plain `pip`.
+
+Run from the project root:
+```bash
+python -m pip install -U pre-commit ruff mypy
+python -m pre_commit install
+python -m pre_commit run --all-files
+```
+
+### Quick verification (pip)
+
+Use this to verify that the package can be imported and the unit tests pass after dependency changes.
+
+Run from the project root:
+```bash
+python -m pip install -e .
+python -m pytest -q tests/
+```
