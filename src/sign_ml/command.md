@@ -11,8 +11,7 @@ wandb sweep configs/sweep.yaml
 
 # Start the sweep agent
 # Use the command printed by the sweep creation, e.g.:
-#   wandb agent <entity>/<project>/<sweep_id>
-wandb agent <sweep_id>
+py -m wandb agent <entity>/<project>/<sweep_id>
 ```
 
 # Profilers
@@ -26,14 +25,14 @@ wandb agent <sweep_id>
 Run from inside `src/sign_ml/`:
 
 ```bash
-python -m cProfile -o profile_data.prof -s cumtime data.py
+py -m cProfile -o profile_data.prof -s cumtime data.py
 python -c "import pstats; pstats.Stats('profile_data.prof').sort_stats('cumulative').print_stats(40)"
 
-python -m cProfile -o profile_train.prof -s cumtime train.py
-python -c "import pstats; pstats.Stats('profile_train.prof').sort_stats('cumulative').print_stats(40)"
+py -m cProfile -o profile_train.prof -s cumtime train.py
+py -c "import pstats; pstats.Stats('profile_train.prof').sort_stats('cumulative').print_stats(40)"
 
-python -m cProfile -o profile_evaluate.prof -s cumtime evaluate.py
-python -c "import pstats; pstats.Stats('profile_evaluate.prof').sort_stats('cumulative').print_stats(40)"
+py -m cProfile -o profile_evaluate.prof -s cumtime evaluate.py
+py -c "import pstats; pstats.Stats('profile_evaluate.prof').sort_stats('cumulative').print_stats(40)"
 ```
 
 ### PyTorch profiler (your code)
@@ -43,18 +42,17 @@ steps (default: 10) and writes a Chrome trace to:
 
 `log/sign_ml/profiling/torch/<timestamp>/trace.json`
 
-Run from inside `src/sign_ml/`:
+Run from inside root:
 
 ```bash
 # Use the dedicated config that enables TensorBoard profiling output under project-root ./log/
-#Run from inside `src/sign_ml/`
+#Run from inside root
 
-python train.py --config-name tensorboardprofiling
+py -m sign_ml.train --config-name tensorboardprofiling
 
 # `evaluate.py` creates TensorBoard profiler traces under project-root ./log/ by default
-#Run from inside `src/sign_ml/`
-python evaluate.py --config-name tensorboardprofiling
-
+#Run from root
+py -m sign_ml.evaluate --config-name tensorboardprofiling
 # Alternative (explicit flags)
 # python train.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
 # python evaluate.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
