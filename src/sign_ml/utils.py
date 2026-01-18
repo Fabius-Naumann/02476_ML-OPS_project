@@ -80,7 +80,7 @@ def _get_torch_profiler_config(
     steps: int,
     timestamp: datetime,
     export_tensorboard: bool,
-) -> tuple[list[Any], Any, Any, Path, Optional[Path]]:
+) -> tuple[list[Any], Any, Any, Path, Path | None]:
     """Build shared torch.profiler configuration for training/evaluation.
 
     Returns the activities list, schedule, on_trace_ready callback, trace directory,
@@ -96,7 +96,7 @@ def _get_torch_profiler_config(
     if device.type == "cuda":
         activities.append(ProfilerActivity.CUDA)
 
-    tb_dir: Optional[Path] = None
+    tb_dir: Path | None = None
     schedule = None
     on_trace_ready = None
     if export_tensorboard:
@@ -118,7 +118,7 @@ def _is_truthy_env(var_name: str) -> bool:
     return value.strip().lower() not in {"", "0", "false", "no", "off"}
 
 
-def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
+def _is_wandb_disabled(cfg: DictConfig | None = None) -> bool:
     """Return True when W&B should be disabled.
 
     Disabling can be controlled via environment variables or via Hydra config.
@@ -143,10 +143,7 @@ def _is_wandb_disabled(cfg: Optional[DictConfig] = None) -> bool:
     if enabled_root is None and enabled_experiment is None:
         # No explicit config: for sweeps, enable; otherwise default to disabled.
         return not is_sweep_agent_run
-    if enabled_root is False or enabled_experiment is False:
-        return True
-
-    return False
+    return enabled_root is False or enabled_experiment is False
 
 
 def _find_repo_root(start: Path) -> Path:
