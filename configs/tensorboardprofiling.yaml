@@ -11,6 +11,15 @@ optimizer:
 paths:
   model_out: models/traffic_sign_model.pt
 
+# Default profiling settings.
+# This enables a short torch.profiler run (first epoch only) and writes TensorBoard traces under ./log.
+profiling:
+  torch:
+    enabled: true
+    export_tensorboard: true
+    export_chrome: false
+    steps: 10
+
 hydra:
   run:
     dir: ${oc.env:PROJECT_ROOT}/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
