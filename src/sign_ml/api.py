@@ -24,17 +24,8 @@ from PIL import Image
 from pydantic import BaseModel
 from torchvision import transforms
 
-try:
-    from sign_ml import BASE_DIR
-    from sign_ml.model import build_model
-except ModuleNotFoundError:
-    repo_root = Path(__file__).resolve().parents[2]
-    src_dir = repo_root / "src"
-    if str(src_dir) not in sys.path:
-        sys.path.insert(0, str(src_dir))
-    from sign_ml import BASE_DIR
-    from sign_ml.model import build_model
-
+from sign_ml import BASE_DIR
+from sign_ml.model import build_model
 
 DEFAULT_MODEL_PATH = BASE_DIR / "models" / "traffic_sign_model.pt"
 IMAGE_FILE = File(...)
@@ -92,10 +83,15 @@ def _read_log_tail(path: Path, *, max_lines: int = 200) -> list[str]:
     if not path.exists():
         return []
     try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        from collections import deque
+
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            tail: deque[str] = deque(maxlen=max_lines)
+            for line in f:
+                tail.append(line.rstrip("\n"))
+        return list(tail)
     except OSError:
         return []
-    return lines[-max_lines:]
 
 
 @dataclass
@@ -128,6 +124,7 @@ class _AdminJob:
 
 _ADMIN_JOBS: dict[str, _AdminJob] = {}
 _ADMIN_JOBS_LOCK = threading.Lock()
+_ADMIN_JOBS_RESERVED: int = 0
 
 
 def _running_admin_jobs_count() -> int:
@@ -140,9 +137,28 @@ def _running_admin_jobs_count() -> int:
 
 
 def _start_admin_job(*, action: str, args: list[str]) -> str:
+    """Start a background admin job, enforcing max concurrency under lock.
+
+    Uses a reservation counter to prevent races between the concurrency check
+    and job registration, ensuring that concurrent requests cannot exceed the
+    configured limit.
+    """
+
+    global _ADMIN_JOBS_RESERVED
+
     max_jobs = _max_admin_jobs()
-    if _running_admin_jobs_count() >= max_jobs:
-        raise HTTPException(status_code=429, detail=f"Too many running jobs (limit={max_jobs})")
+
+    # Reserve a slot under lock to avoid races with concurrent starters.
+    with _ADMIN_JOBS_LOCK:
+        running = 0
+        for job in _ADMIN_JOBS.values():
+            if job.process.poll() is None:
+                running += 1
+
+        if running + _ADMIN_JOBS_RESERVED >= max_jobs:
+            raise HTTPException(status_code=429, detail=f"Too many running jobs (limit={max_jobs})")
+
+        _ADMIN_JOBS_RESERVED += 1
 
     job_id = uuid.uuid4().hex
     timestamp = datetime.datetime.now(tz=datetime.UTC).strftime("%Y%m%d-%H%M%S")
@@ -165,6 +181,11 @@ def _start_admin_job(*, action: str, args: list[str]) -> str:
             stderr=subprocess.STDOUT,
             text=True,
         )
+    except Exception:
+        # If starting the process fails, release the reserved slot.
+        with _ADMIN_JOBS_LOCK:
+            _ADMIN_JOBS_RESERVED = max(0, _ADMIN_JOBS_RESERVED - 1)
+        raise
     finally:
         log_file.close()
 
@@ -178,8 +199,10 @@ def _start_admin_job(*, action: str, args: list[str]) -> str:
         started_at=datetime.datetime.now(tz=datetime.UTC),
     )
 
+    # Register the job and release the reservation.
     with _ADMIN_JOBS_LOCK:
         _ADMIN_JOBS[job_id] = job
+        _ADMIN_JOBS_RESERVED = max(0, _ADMIN_JOBS_RESERVED - 1)
 
     logger.info("Started admin job {}: {}", job_id, " ".join(cmd))
     return job_id
