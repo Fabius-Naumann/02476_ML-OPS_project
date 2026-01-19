@@ -10,7 +10,6 @@ import torch
 import torch.nn as nn
 
 # Weights & Biases
-import wandb
 from dotenv import load_dotenv
 from hydra.utils import instantiate
 from loguru import logger
@@ -20,18 +19,63 @@ from torch.utils.data import DataLoader
 from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
 from sign_ml.model import build_model
-from sign_ml.utils import device_from_cfg, init_wandb
+from sign_ml.utils import (
+    _bool_from_cfg,
+    _get_torch_profiler_config,
+    _int_from_cfg,
+    device_from_cfg,
+    init_wandb,
+)
+
+os.environ.setdefault("PROJECT_ROOT", BASE_DIR.as_posix())
+
 
 # Load environment variables once (e.g., WANDB_API_KEY, WANDB_PROJECT)
 load_dotenv()
 
 
-# Set up loguru to log to file in outputs/<date>/<time>/train.log
-now = datetime.datetime.now()
-log_dir = Path("outputs") / now.strftime("%Y-%m-%d") / now.strftime("%H-%M-%S")
-log_dir.mkdir(parents=True, exist_ok=True)
-log_file = log_dir / "train.log"
-logger.add(str(log_file))
+def train_one_epoch_profiled(
+    model,
+    loader,
+    criterion,
+    optimizer,
+    device: torch.device,
+    *,
+    prof,
+    max_steps: int,
+):
+    """Train for a limited number of steps while calling `prof.step()` each iteration."""
+
+    model.train()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+
+    use_non_blocking = device.type == "cuda"
+
+    for step_idx, (images, labels) in enumerate(loader):
+        if step_idx >= max_steps:
+            break
+
+        images = images.to(device, non_blocking=use_non_blocking)
+        labels = labels.to(device, non_blocking=use_non_blocking)
+
+        optimizer.zero_grad(set_to_none=True)
+        outputs = model(images)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss.item() * images.size(0)
+        _, preds = outputs.max(1)
+        correct += (preds == labels).sum().item()
+        total += labels.size(0)
+
+        prof.step()
+
+    if total == 0:
+        return 0.0, 0.0
+    return total_loss / total, 100.0 * correct / total
 
 
 def _set_seed(seed: int) -> None:
@@ -65,11 +109,13 @@ def train_one_epoch(model, loader, criterion, optimizer, device: torch.device):
     correct = 0
     total = 0
 
-    for images, labels in loader:
-        images = images.to(device)
-        labels = labels.to(device)
+    use_non_blocking = device.type == "cuda"
 
-        optimizer.zero_grad()
+    for images, labels in loader:
+        images = images.to(device, non_blocking=use_non_blocking)
+        labels = labels.to(device, non_blocking=use_non_blocking)
+
+        optimizer.zero_grad(set_to_none=True)
         outputs = model(images)
         loss = criterion(outputs, labels)
         loss.backward()
@@ -91,10 +137,12 @@ def validate(model, loader, criterion, device: torch.device):
     correct = 0
     total = 0
 
-    with torch.no_grad():
+    use_non_blocking = device.type == "cuda"
+
+    with torch.inference_mode():
         for images, labels in loader:
-            images = images.to(device)
-            labels = labels.to(device)
+            images = images.to(device, non_blocking=use_non_blocking)
+            labels = labels.to(device, non_blocking=use_non_blocking)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -107,8 +155,72 @@ def validate(model, loader, criterion, device: torch.device):
     return total_loss / total, 100.0 * correct / total
 
 
+def _run_profiled_epoch_zero(
+    *,
+    cfg: DictConfig,
+    device: torch.device,
+    torch_profiler_steps: int,
+    run_timestamp: datetime.datetime,
+    export_tensorboard: bool,
+    export_chrome: bool,
+    model,
+    train_loader,
+    criterion,
+    optimizer,
+) -> tuple[float, float]:
+    """Run a limited, profiled training epoch (epoch 0).
+
+    Returns the training loss and accuracy computed over ``torch_profiler_steps`` iterations.
+    Also handles exporting TensorBoard traces and Chrome JSON traces if enabled in config.
+    """
+
+    from torch.profiler import profile
+
+    activities, schedule, on_trace_ready, trace_dir, tb_dir = _get_torch_profiler_config(
+        cfg,
+        device,
+        steps=torch_profiler_steps,
+        timestamp=run_timestamp,
+        export_tensorboard=export_tensorboard,
+    )
+
+    logger.info("torch.profiler enabled: profiling {} training steps", torch_profiler_steps)
+    with profile(
+        activities=activities,
+        record_shapes=True,
+        schedule=schedule,
+        on_trace_ready=on_trace_ready,
+    ) as prof:
+        train_loss, train_acc = train_one_epoch_profiled(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            prof=prof,
+            max_steps=torch_profiler_steps,
+        )
+
+    if export_tensorboard and tb_dir is not None:
+        logger.info("torch.profiler TensorBoard logs written to: {}", tb_dir)
+
+    if export_chrome:
+        trace_path = trace_dir / "trace.json"
+        prof.export_chrome_trace(str(trace_path))
+        logger.info("torch.profiler chrome trace written to: {}", trace_path)
+
+    return train_loss, train_acc
+
+
 def train(cfg: DictConfig) -> Path:
     """Train the traffic sign model using a Hydra configuration."""
+
+    run_timestamp = datetime.datetime.now()
+    date_str = run_timestamp.strftime("%Y-%m-%d")
+    time_str = run_timestamp.strftime("%H-%M-%S")
+    log_dir = Path("outputs") / date_str / time_str
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger.add(str(log_dir / "train.log"))
 
     logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
@@ -123,6 +235,8 @@ def train(cfg: DictConfig) -> Path:
         logger.warning("WandB disabled due to error: {}", wandb_error)
 
     if use_wandb:
+        import wandb  # type: ignore
+
         is_sweep_run = getattr(getattr(wandb, "run", None), "sweep_id", None) is not None or os.getenv("WANDB_SWEEP_ID")
         if is_sweep_run:
             logger.info("W&B sweep objective: validation/accuracy (maximize)")
@@ -137,8 +251,20 @@ def train(cfg: DictConfig) -> Path:
     batch_size = int(hparams.training.batch_size)
     epochs = int(hparams.training.epochs)
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=generator)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, generator=generator)
+    pin_memory = device.type == "cuda"
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=batch_size,
+        shuffle=True,
+        generator=generator,
+        pin_memory=pin_memory,
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=batch_size,
+        generator=generator,
+        pin_memory=pin_memory,
+    )
 
     num_classes = len(torch.unique(train_ds.targets))
     model = build_model(num_classes).to(device)
@@ -146,9 +272,37 @@ def train(cfg: DictConfig) -> Path:
     criterion = nn.CrossEntropyLoss()
     optimizer = instantiate(cfg.optimizer, lr=float(hparams.optimizer.lr), params=model.parameters())
 
+    use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=False)
+    torch_profiler_steps = _int_from_cfg(cfg, "profiling.torch.steps", default=10)
+    export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=True)
+    export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=False)
+
     for epoch in range(epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss, val_acc = validate(model, val_loader, criterion, device)
+        if use_torch_profiler and epoch == 0:
+            train_loss, train_acc = _run_profiled_epoch_zero(
+                cfg=cfg,
+                device=device,
+                torch_profiler_steps=torch_profiler_steps,
+                run_timestamp=run_timestamp,
+                export_tensorboard=export_tensorboard,
+                export_chrome=export_chrome,
+                model=model,
+                train_loader=train_loader,
+                criterion=criterion,
+                optimizer=optimizer,
+            )
+        else:
+            train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+
+        if use_torch_profiler and epoch == 0:
+            val_loss, val_acc = float("nan"), float("nan")
+            logger.info(
+                "Skipping validation for profiled epoch 0 because training ran on a limited number of steps "
+                "(torch_profiler_steps={}).",
+                torch_profiler_steps,
+            )
+        else:
+            val_loss, val_acc = validate(model, val_loader, criterion, device)
 
         logger.info(
             "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
@@ -161,6 +315,8 @@ def train(cfg: DictConfig) -> Path:
         )
         # Log metrics to wandb (if enabled)
         if use_wandb:
+            import wandb  # type: ignore
+
             wandb.log(
                 {
                     "epoch": epoch + 1,
@@ -177,7 +333,9 @@ def train(cfg: DictConfig) -> Path:
     logger.info("Model saved to: {}", model_out)
     # Log model artifact to wandb (if enabled)
     if use_wandb:
-        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{now.strftime('%Y%m%d-%H%M%S')}"
+        import wandb  # type: ignore
+
+        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{run_timestamp.strftime('%Y%m%d-%H%M%S')}"
         artifact = wandb.Artifact(artifact_name, type="model")
         artifact.add_file(str(model_out))
         wandb.log_artifact(artifact)
