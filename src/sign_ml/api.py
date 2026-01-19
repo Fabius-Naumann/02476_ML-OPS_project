@@ -1,7 +1,14 @@
+import json
 import time
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from prometheus_client import Counter, Histogram, generate_latest
+
+# --------------------
+# Prometheus metrics (M28)
+# --------------------
 
 REQUEST_COUNT = Counter(
     "request_count_total",
@@ -15,13 +22,61 @@ REQUEST_LATENCY = Histogram(
     ["endpoint"],
 )
 
+# --------------------
+# App
+# --------------------
+
 app = FastAPI()
 
+# --------------------
+# Inference logging (M27)
+# --------------------
+
+LOG_PATH = Path("data/inference_logs/predictions.jsonl")
+LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+
+def log_prediction(input_summary: dict, output_summary: dict) -> None:
+    record = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "input": input_summary,
+        "output": output_summary,
+    }
+    with LOG_PATH.open("a") as f:
+        f.write(json.dumps(record) + "\n")
+
+
+# --------------------
+# Basic endpoints
+# --------------------
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
+
+@app.post("/predict")
+def predict(dummy_input: float = 0.0):
+    """
+    Dummy prediction endpoint for M27.
+    Logs input-output pairs for drift analysis.
+    """
+
+    # Dummy "model"
+    prediction = 1
+    confidence = 0.85
+
+    log_prediction(
+        input_summary={"dummy_input": dummy_input},
+        output_summary={"class": prediction, "confidence": confidence},
+    )
+
+    return {"class": prediction, "confidence": confidence}
+
+
+# --------------------
+# Metrics middleware (M28)
+# --------------------
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
