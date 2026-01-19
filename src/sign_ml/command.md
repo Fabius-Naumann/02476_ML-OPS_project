@@ -20,7 +20,7 @@ py -m wandb agent <entity>/<project>/<sweep_id>
 
 !!! info "Core Module"
 
-## Project profiling (sign_ml)
+##  c-profiling (profiler for data.py, train.py, evaluate.py)
 
 Run from inside `src/sign_ml/`:
 
@@ -35,12 +35,12 @@ py -m cProfile -o profile_evaluate.prof -s cumtime evaluate.py
 py -c "import pstats; pstats.Stats('profile_evaluate.prof').sort_stats('cumulative').print_stats(40)"
 ```
 
-### PyTorch profiler (your code)
+### PyTorch profiler (train.py, evaluate.py)
 
 Your `train.py` and `evaluate.py` support an optional `torch.profiler` mode. It profiles only a small number of
-steps (default: 10) and writes a Chrome trace to:
+steps (default: 10).
 
-`log/sign_ml/profiling/torch/<timestamp>/trace.json`
+`log/<timestamp>/trace.json`
 
 Run from inside root:
 
@@ -53,9 +53,7 @@ py -m sign_ml.train --config-name tensorboardprofiling
 # `evaluate.py` creates TensorBoard profiler traces under project-root ./log/ by default
 #Run from root
 py -m sign_ml.evaluate --config-name tensorboardprofiling
-# Alternative (explicit flags)
-# python train.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
-# python evaluate.py +profiling.torch.enabled=true +profiling.torch.export_tensorboard=true
+
 ```
 
 
@@ -64,10 +62,6 @@ Run from the project root:
 tensorboard --logdir=./log
 ```
 Then start TensorBoard (from the project root) and open <http://localhost:6006/#pytorch_profiler>:
-
-
-Alternative: keep `+profiling.torch.export_chrome=true` (and disable TensorBoard export) to generate a `trace.json`,
-then open it via `chrome://tracing`.
 
 ---
 
@@ -104,7 +98,7 @@ python -m pre_commit install
 python -m pre_commit run --all-files
 ```
 
-### Quick verification (pip)
+### unit tests (with pip)
 
 Use this to verify that the package can be imported and the unit tests pass after dependency changes.
 
@@ -113,3 +107,38 @@ Run from the project root:
 python -m pip install -e .
 python -m pytest -q tests/
 ```
+
+## FastAPI (inference API)
+
+FastAPI is a lightweight Python web framework for building REST APIs.
+In this project it is used to expose the trained model as an HTTP service, so other programs (or users) can send an
+image and receive a prediction without running Python code directly.
+
+Your inference API is defined in `src/sign_ml/api.py` and exposes endpoints like:
+
+- `GET /` for a short usage hint
+- `GET /health` for readiness checks
+- `GET /model` for basic metadata (path, device, num_classes)
+- `POST /predict` for inference: upload an image and get the predicted class (and class probabilities) back as JSON
+- `GET /docs` for interactive UI
+
+
+### How to run exactly like your command (from `src/sign_ml`)
+
+If your current working directory is `src/sign_ml/`:
+
+```bash
+python -m uvicorn --reload --port 8000 api:app
+```
+
+Tip: Prefer `python` (your active environment) over the Windows `py` launcher to avoid running uvicorn in a different
+Python installation.
+
+Then open:
+
+- <http://localhost:8000>
+- <http://localhost:8000/docs>
+
+
+Tip: Prefer `python` (your active environment) over the Windows `py` launcher to avoid running uvicorn in a different
+Python installation.
