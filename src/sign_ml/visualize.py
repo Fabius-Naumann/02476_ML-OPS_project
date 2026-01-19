@@ -5,8 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence, Sized
 from pathlib import Path
-from typing import cast
-from typing import Protocol
+from typing import Protocol, cast
 
 import matplotlib.pyplot as plt
 import torch

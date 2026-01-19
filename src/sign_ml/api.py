@@ -50,6 +50,7 @@ def log_prediction(input_summary: dict, output_summary: dict) -> None:
 # Basic endpoints
 # --------------------
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -77,6 +78,7 @@ def predict(dummy_input: float = 0.0):
 # --------------------
 # Metrics middleware (M28)
 # --------------------
+
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
