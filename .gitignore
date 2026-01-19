@@ -8,7 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
-/data
 1_Tensors_in_PyTorch.ipynb
 2_Neural_Networks_in_PyTorch.ipynb
 Training_Neural_Networks_Filled.ipynb
