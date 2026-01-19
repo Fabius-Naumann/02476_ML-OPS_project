@@ -6,15 +6,27 @@ import math
 from collections.abc import Sequence, Sized
 from pathlib import Path
 from typing import cast
+from typing import Protocol
 
 import matplotlib.pyplot as plt
 import torch
 from loguru import logger
-from torch.utils.data import Dataset
 
 from sign_ml import FIGURES_DIR
 
 FIGURE_DPI = 150
+
+
+class IndexableDataset(Protocol):
+    """Protocol for datasets that support indexing and length.
+
+    Implementations must provide ``__len__`` returning an ``int`` and
+    ``__getitem__`` returning a ``(image, label)`` tuple.
+    """
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]: ...
 
 
 def _denormalize(img: torch.Tensor, mean: Sequence[float], std: Sequence[float]) -> torch.Tensor:
@@ -25,7 +37,7 @@ def _denormalize(img: torch.Tensor, mean: Sequence[float], std: Sequence[float])
 
 
 def plot_samples(
-    dataset: Dataset[tuple[torch.Tensor, torch.Tensor]],
+    dataset: IndexableDataset,
     samples: int = 9,
     output_path: Path | None = None,
     mean: Sequence[float] = (0.5, 0.5, 0.5),

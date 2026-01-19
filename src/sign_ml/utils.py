@@ -1,13 +1,149 @@
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
+from datetime import datetime
 from pathlib import Path
 from types import ModuleType
 from typing import IO, Any, cast
 
 import torch
-import wandb
 from omegaconf import DictConfig, OmegaConf
+
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def _bool_from_cfg(cfg: DictConfig, key: str, default: bool = False) -> bool:
+    """Return a boolean from config, accepting several truthy strings.
+
+    Args:
+        cfg: Hydra configuration object.
+        key: Dot-separated key to look up.
+        default: Fallback value when the key is missing or invalid.
+
+    Returns:
+        Parsed boolean value.
+    """
+
+    value = OmegaConf.select(cfg, key, default=default)
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _int_from_cfg(cfg: DictConfig, key: str, default: int) -> int:
+    """Return an integer from config, falling back on parse errors.
+
+    Args:
+        cfg: Hydra configuration object.
+        key: Dot-separated key to look up.
+        default: Fallback value when the key is missing or invalid.
+
+    Returns:
+        Parsed integer value.
+    """
+
+    value = OmegaConf.select(cfg, key, default=default)
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _torch_profile_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for torch.profiler traces."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.out_dir", default=None)
+    if out_dir is None:
+        # Default under project-root ./log so traces stay out of src/
+        return BASE_DIR / "log" / "sign_ml" / "profiling" / "torch"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def _torch_tb_log_dir(cfg: DictConfig) -> Path:
+    """Resolve an absolute output directory for TensorBoard profiler logs."""
+
+    out_dir = OmegaConf.select(cfg, "profiling.torch.tensorboard_dir", default=None)
+    if out_dir is None:
+        # Default to project-root ./log so users can run: tensorboard --logdir=./log
+        return BASE_DIR / "log" / "sign_ml"
+    path = Path(str(out_dir))
+    return path if path.is_absolute() else BASE_DIR / path
+
+
+def _get_torch_profiler_config(
+    cfg: DictConfig,
+    device: torch.device,
+    *,
+    steps: int,
+    timestamp: datetime,
+    export_tensorboard: bool,
+) -> tuple[list[Any], Any, Any, Path, Path | None]:
+    """Build shared torch.profiler configuration for training/evaluation.
+
+    Returns the activities list, schedule, on_trace_ready callback, trace directory,
+    and optional TensorBoard directory.
+    """
+
+    from torch.profiler import ProfilerActivity, schedule as profiler_schedule, tensorboard_trace_handler
+
+    trace_dir = _torch_profile_dir(cfg) / timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+    trace_dir.mkdir(parents=True, exist_ok=True)
+
+    activities = [ProfilerActivity.CPU]
+    if device.type == "cuda":
+        activities.append(ProfilerActivity.CUDA)
+
+    tb_dir: Path | None = None
+    schedule = None
+    on_trace_ready = None
+    if export_tensorboard:
+        tb_root = _torch_tb_log_dir(cfg)
+        tb_dir = tb_root / timestamp.strftime("%Y-%m-%d_%H-%M-%S")
+        tb_dir.mkdir(parents=True, exist_ok=True)
+        on_trace_ready = tensorboard_trace_handler(str(tb_dir))
+        active_steps = max(steps - 1, 1)
+        schedule = profiler_schedule(wait=0, warmup=1, active=active_steps, repeat=1)
+
+    return activities, schedule, on_trace_ready, trace_dir, tb_dir
+
+
+def _is_truthy_env(var_name: str) -> bool:
+    """Return True when an environment variable is set to a truthy value."""
+    value = os.getenv(var_name)
+    if value is None:
+        return False
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def _is_wandb_disabled(cfg: DictConfig | None = None) -> bool:
+    """Return True when W&B should be disabled.
+
+    Disabling can be controlled via environment variables or via Hydra config.
+    By default, W&B is disabled unless explicitly enabled in config.
+    """
+    if _is_truthy_env("WANDB_DISABLED"):
+        return True
+
+    mode = os.getenv("WANDB_MODE")
+    if mode is not None and mode.strip().lower() == "disabled":
+        return True
+
+    is_sweep_agent_run = bool(os.getenv("WANDB_SWEEP_ID"))
+
+    if cfg is None:
+        # For sweeps, we default to enabling W&B so the sweep UI receives metrics.
+        return not is_sweep_agent_run
+
+    enabled_root = OmegaConf.select(cfg, "wandb.enabled", default=None)
+    enabled_experiment = OmegaConf.select(cfg, "experiment.wandb.enabled", default=None)
+
+    if enabled_root is None and enabled_experiment is None:
+        # No explicit config: for sweeps, enable; otherwise default to disabled.
+        return not is_sweep_agent_run
+    return enabled_root is False or enabled_experiment is False
 
 
 def _find_repo_root(start: Path) -> Path:
@@ -171,6 +307,14 @@ def init_wandb(cfg: DictConfig, run_name: str | None = None, group: str | None =
     Returns:
         Tuple (use_wandb, error). If initialization fails, use_wandb is False and error contains the exception.
     """
+
+    if _is_wandb_disabled(cfg):
+        return False, None
+
+    try:
+        import wandb  # type: ignore
+    except Exception as exc:
+        return False, exc
 
     try:
         run = wandb.init(**get_wandb_init_kwargs(cfg, run_name=run_name, group=group))
