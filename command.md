@@ -107,21 +107,24 @@ Run from the project root:
 python -m pip install -e .
 python -m pytest -q tests/
 ```
+or
+```bash
+# Install the package itself
+pip install -e .
+
+# Install missing test deps explicitly (pip doesn’t read uv dev groups)
+pip install httpx pytest coverage
+
+# Run tests with coverage
+python -m coverage run -m pytest tests/
+python -m coverage report
+```
 
 ## FastAPI (inference API)
 
 FastAPI is a lightweight Python web framework for building REST APIs.
 In this project it is used to expose the trained model as an HTTP service, so other programs (or users) can send an
 image and receive a prediction without running Python code directly.
-
-Your inference API is defined in `src/sign_ml/api.py` and exposes endpoints like:
-
-- `GET /` for a short usage hint
-- `GET /health` for readiness checks
-- `GET /model` for basic metadata (path, device, num_classes)
-- `POST /predict` for inference: upload an image and get the predicted class (and class probabilities) back as JSON
-- `GET /docs` for interactive UI
-
 
 ### How to run exactly like your command (from `src/sign_ml`)
 
@@ -142,3 +145,62 @@ Then open:
 
 Tip: Prefer `python` (your active environment) over the Windows `py` launcher to avoid running uvicorn in a different
 Python installation.
+
+### Endpoints
+
+Your inference API is defined in `src/sign_ml/api.py` and exposes endpoints like:
+
+This service exposes a FastAPI application for health checks, basic model metadata, inference, and admin utilities.
+
+### Meta
+- GET `/`
+  Returns a short usage hint.
+
+- GET `/health`
+  Returns service health and model load status.
+  - Response: `{ status: "ok"|"not_ready", is_loaded: bool, weights_file: str, num_classes: int|null, detail: str|null }`
+
+- GET `/model`
+  Returns basic model metadata.
+  - Response: `{ model_path: str, num_classes: int|null, device: str }`
+
+### Inference
+- POST `/predict`
+  Runs inference on a single uploaded image.
+  - Request: multipart/form-data with key `image` (content-type `image/*`).
+  - Responses:
+    - 200: `{ predicted_class: int, probabilities: number[], num_classes: int }`
+    - 400: invalid image or empty file
+    - 415: non-image media type
+    - 503: model not loaded
+
+### Admin
+Admin endpoints run jobs in a controlled subprocess and return latest status/results.
+
+- GET `/admin/status`
+  Indicates whether admin endpoints are enabled and current job counts.
+  - Response: `{ enabled: bool, max_running_jobs: int, running_jobs: int, total_jobs: int }`
+
+- GET `/admin/train`
+  Returns info about the latest train job (does not start a new job).
+  - Response: `{ action: "train", status: "not_started"|"running"|"completed", job_id: str|null, log_tail: string[] }`
+
+- POST `/admin/train_sync`
+  Starts training and waits up to a configured timeout before returning the result/status.
+  - Query params (optional): `epochs: int`, `batch_size: int`, `lr: float`
+  - Response (success): `{ job_id: str, action: "train", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+
+- GET `/admin/evaluate`
+  Returns info about the latest evaluate job (does not start a new job).
+  - Response: `{ action: "evaluate", status: "not_started"|"running"|"completed", job_id: str|null, log_tail: string[] }`
+
+- POST `/admin/evaluate_sync`
+  Starts evaluation and waits up to a configured timeout before returning the result/status.
+  - Query params (optional): `batch_size: int`
+  - Response (success): `{ job_id: str, action: "evaluate", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+
+- POST `/admin/test_sync`
+  Runs the repository test suite and returns the result/status.
+  - Response (success): `{ job_id: str, action: "test", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+
+---
