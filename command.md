@@ -142,10 +142,6 @@ Then open:
 - <http://localhost:8000>
 - <http://localhost:8000/docs>
 
-
-Tip: Prefer `python` (your active environment) over the Windows `py` launcher to avoid running uvicorn in a different
-Python installation.
-
 ### Endpoints
 
 Your inference API is defined in `src/sign_ml/api.py` and exposes endpoints like:
@@ -183,24 +179,24 @@ Admin endpoints run jobs in a controlled subprocess and return latest status/res
 
 - GET `/admin/train`
   Returns info about the latest train job (does not start a new job).
-  - Response: `{ action: "train", status: "not_started"|"running"|"completed", job_id: str|null, log_tail: string[] }`
+  - Response: `{ action: "train", status: "not_started"|"running"|"completed"|"failed"|"from_outputs", job_id: str|null, log_tail: string[] }`
 
 - POST `/admin/train_sync`
   Starts training and waits up to a configured timeout before returning the result/status.
   - Query params (optional): `epochs: int`, `batch_size: int`, `lr: float`
-  - Response (success): `{ job_id: str, action: "train", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+  - Response (success): `{ job_id: str, action: "train", status: "completed"|"running"|"failed", return_code: int|null, log_tail: string[] }`
 
 - GET `/admin/evaluate`
   Returns info about the latest evaluate job (does not start a new job).
-  - Response: `{ action: "evaluate", status: "not_started"|"running"|"completed", job_id: str|null, log_tail: string[] }`
+  - Response: `{ action: "evaluate", status: "not_started"|"running"|"completed"|"failed"|"from_outputs", job_id: str|null, log_tail: string[] }`
 
 - POST `/admin/evaluate_sync`
   Starts evaluation and waits up to a configured timeout before returning the result/status.
   - Query params (optional): `batch_size: int`
-  - Response (success): `{ job_id: str, action: "evaluate", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+  - Response (success): `{ job_id: str, action: "evaluate", status: "completed"|"running"|"failed", return_code: int|null, log_tail: string[] }`
 
 - POST `/admin/test_sync`
   Runs the repository test suite and returns the result/status.
-  - Response (success): `{ job_id: str, action: "test", status: "completed"|"running", return_code: int|null, log_tail: string[] }`
+  - Response (success): `{ job_id: str, action: "test", status: "completed"|"running"|"failed", return_code: int|null, log_tail: string[] }`
 
 ---
