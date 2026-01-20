@@ -1,22 +1,16 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
-# -------------------------------------------------
-# Docker / CI ONLY behaviour (does not affect local)
-# -------------------------------------------------
-ENV FORCE_CPU=1
-ENV CUDA_VISIBLE_DEVICES=""
-
-# Avoid large persistent caches in CI
-ENV TORCH_HOME=/tmp/torch
-ENV HF_HOME=/tmp/huggingface
-
 WORKDIR /app
 
 # ----------------------------
 # Install dependencies
 # ----------------------------
-COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+COPY pyproject.toml ./
+
+# Force CPU torch/torchvision for Linux-in-Docker by rewriting the uv sources mapping
+RUN sed -i "s/{ index = \"pytorch-cu118\", marker = \"sys_platform != 'darwin'\" }/{ index = \"pytorch-cpu\", marker = \"sys_platform != 'darwin'\" }/g" pyproject.toml
+
+RUN uv sync --no-install-project
 
 # ----------------------------
 # Copy source
@@ -24,7 +18,7 @@ RUN uv sync --frozen --no-install-project
 COPY src src/
 COPY README.md LICENSE ./
 
-RUN uv sync --frozen
+RUN uv sync
 
 # ----------------------------
 # Run API
