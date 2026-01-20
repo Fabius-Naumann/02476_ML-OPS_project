@@ -200,3 +200,27 @@ Admin endpoints run jobs in a controlled subprocess and return latest status/res
   - Response (success): `{ job_id: str, action: "test", status: "completed"|"running"|"failed", return_code: int|null, log_tail: string[] }`
 
 ---
+
+# API test (integration testing) for FastAPI
+
+API testing validates the application programming interface (API) directly for correctness, reliability, and security.
+Unlike unit tests, it tests the API as a whole (integration testing) rather than individual functions.
+The tests should simulate realistic user requests (paths, methods, headers, and payloads).
+
+These tests validate API behavior end-to-end (in-process) using FastAPI's `TestClient`.
+They do **not** require a running `uvicorn` server.
+
+Run from the project root:
+
+
+```bash
+# Fallback (pip)
+python -m pip install -e .
+python -m pip install httpx
+#Remember to add httpx to your requirements.txt or pyproject.toml file
+
+# run the tests from the project root
+python -m pytest -q tests/integrationtests/test_api.py
+# for more verbose output:
+python -m pytest -vv tests/integrationtests/test_api.py
+```
