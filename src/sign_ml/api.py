@@ -31,6 +31,42 @@ DEFAULT_MODEL_PATH = BASE_DIR / "models" / "traffic_sign_model.pt"
 IMAGE_FILE = File(...)
 
 
+def _max_upload_bytes() -> int:
+    raw = os.getenv("SIGN_ML_MAX_UPLOAD_BYTES", "5242880")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 1048576
+    return max(1024, value)
+
+
+def _max_image_pixels() -> int:
+    raw = os.getenv("SIGN_ML_MAX_IMAGE_PIXELS", "10000000")
+    try:
+        value = int(raw)
+    except ValueError:
+        return 10000000
+    return max(65536, value)
+
+
+async def _read_upload_file_limited(upload: UploadFile, *, max_bytes: int) -> bytes:
+    total = 0
+    chunks: list[bytes] = []
+    # Read in 1 MiB chunks up to max_bytes
+    while True:
+        to_read = min(1024 * 1024, max_bytes - total)
+        if to_read <= 0:
+            raise HTTPException(status_code=413, detail=f"File too large (> {max_bytes} bytes)")
+        chunk = await upload.read(to_read)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail=f"File too large (> {max_bytes} bytes)")
+    return b"".join(chunks)
+
+
 def _max_admin_jobs() -> int:
     raw = os.getenv("SIGN_ML_MAX_ADMIN_JOBS", "10")
     try:
@@ -524,7 +560,7 @@ def create_app() -> FastAPI:  # noqa: C901
         if lr is not None:
             overrides.append(f"experiment.optimizer.lr={lr}")
 
-        job_id = _start_admin_job(action="train", args=["src/sign_ml/train.py", *overrides])
+        job_id = _start_admin_job(action="train", args=["-m", "sign_ml.train", *overrides])
         job = _get_admin_job(job_id)
         _wait_for_admin_job(job, timeout_seconds=_get_admin_sync_timeout_seconds())
         return _job_to_result(job)
@@ -543,7 +579,7 @@ def create_app() -> FastAPI:  # noqa: C901
         if batch_size is not None:
             overrides.append(f"experiment.training.batch_size={batch_size}")
 
-        job_id = _start_admin_job(action="evaluate", args=["src/sign_ml/evaluate.py", *overrides])
+        job_id = _start_admin_job(action="evaluate", args=["-m", "sign_ml.evaluate", *overrides])
         job = _get_admin_job(job_id)
         _wait_for_admin_job(job, timeout_seconds=_get_admin_sync_timeout_seconds())
         return _job_to_result(job)
@@ -567,11 +603,14 @@ def create_app() -> FastAPI:  # noqa: C901
         if image.content_type is None or not image.content_type.startswith("image/"):
             raise HTTPException(status_code=415, detail="Unsupported media type; expected an image")
 
-        content = await image.read()
+        # Enforce explicit max upload size before decoding
+        content = await _read_upload_file_limited(image, max_bytes=_max_upload_bytes())
         if not content:
             raise HTTPException(status_code=400, detail="Empty file")
 
         try:
+            # Guard against decompression bombs by limiting pixel count
+            Image.MAX_IMAGE_PIXELS = _max_image_pixels()
             pil_image = Image.open(io.BytesIO(content)).convert("RGB")
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Invalid image: {exc}") from exc
