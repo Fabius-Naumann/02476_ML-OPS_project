@@ -1,5 +1,0 @@
-outs:
-- md5: bc9a482a0dc826ede46c2a69f1889056
-  size: 44893515
-  hash: md5
-  path: traffic_sign_model.pt
