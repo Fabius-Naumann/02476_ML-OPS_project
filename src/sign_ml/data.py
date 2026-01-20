@@ -5,7 +5,6 @@ from pathlib import Path
 import torch
 import typer
 from loguru import logger
-from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
@@ -32,6 +31,61 @@ PREPROCESS = transforms.Compose(
 PREPROCESS_OPTION = typer.Option(False, "--preprocess")
 SAMPLES_OPTION = typer.Option(9, "--samples", min=1)
 OUTPUT_OPTION = typer.Option(FIGURES_DIR / "samples.png", "--output")
+
+
+def _stratified_train_val_split_indices(
+    labels: torch.Tensor,
+    *,
+    val_fraction: float,
+    seed: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Create a stratified train/val split.
+
+    This is a lightweight replacement for ``sklearn.model_selection.train_test_split(..., stratify=labels)``.
+
+    Args:
+        labels: 1D tensor with class labels.
+        val_fraction: Fraction of samples to place in the validation split.
+        seed: Random seed for deterministic splitting.
+
+    Returns:
+        Tuple of (train_indices, val_indices) as int64 tensors.
+    """
+
+    if labels.ndim != 1:
+        raise ValueError("labels must be a 1D tensor")
+    if not (0.0 < val_fraction < 1.0):
+        raise ValueError("val_fraction must be in (0, 1)")
+
+    generator = torch.Generator()
+    generator.manual_seed(seed)
+
+    train_indices: list[int] = []
+    val_indices: list[int] = []
+
+    unique_labels = torch.unique(labels)
+    for label in unique_labels.tolist():
+        class_indices = torch.where(labels == label)[0]
+        if class_indices.numel() <= 1:
+            train_indices.extend(class_indices.tolist())
+            continue
+
+        perm = torch.randperm(class_indices.numel(), generator=generator)
+        shuffled = class_indices[perm]
+
+        val_count = int(class_indices.numel() * val_fraction)
+        val_count = max(1, val_count)
+        val_count = min(val_count, int(class_indices.numel() - 1))
+
+        val_indices.extend(shuffled[:val_count].tolist())
+        train_indices.extend(shuffled[val_count:].tolist())
+
+    train_tensor = torch.tensor(train_indices, dtype=torch.int64)
+    val_tensor = torch.tensor(val_indices, dtype=torch.int64)
+
+    train_tensor = train_tensor[torch.randperm(train_tensor.numel(), generator=generator)]
+    val_tensor = val_tensor[torch.randperm(val_tensor.numel(), generator=generator)]
+    return train_tensor, val_tensor
 
 
 class NumericImageFolder(datasets.ImageFolder):
@@ -83,8 +137,10 @@ def preprocess_data() -> None:
     train_images, train_labels = to_tensors(full_train_ds)
     test_images, test_labels = to_tensors(test_ds)
 
-    train_idx, val_idx = train_test_split(
-        range(len(train_labels)), test_size=VAL_SPLIT, random_state=RANDOM_SEED, stratify=train_labels
+    train_idx, val_idx = _stratified_train_val_split_indices(
+        train_labels,
+        val_fraction=VAL_SPLIT,
+        seed=RANDOM_SEED,
     )
 
     torch.save({"images": train_images[train_idx], "labels": train_labels[train_idx]}, TRAIN_FILE)
