@@ -11,14 +11,31 @@ from __future__ import annotations
 
 import base64
 import os
+import sys
 from typing import Final
 
-from locust import HttpUser, between, task
+import pytest
+
+
+def _performance_tests_enabled() -> bool:
+    return os.getenv("SIGN_ML_RUN_PERFORMANCE_TESTS", "0").strip() not in {"0", "false", "False"}
+
+
+if sys.platform == "win32":
+    pytest.skip("Locust performance tests are not supported on Windows.", allow_module_level=True)
+
+if not _performance_tests_enabled():
+    pytest.skip(
+        "Performance tests disabled (set SIGN_ML_RUN_PERFORMANCE_TESTS=1 to enable).",
+        allow_module_level=True,
+    )
 
 _ONE_BY_ONE_PNG_B64: Final[str] = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ySFTN8AAAAASUVORK5CYII="
 )
 _PNG_BYTES: Final[bytes] = base64.b64decode(_ONE_BY_ONE_PNG_B64)
+
+from locust import HttpUser, between, task  # noqa: E402
 
 
 class ApiUser(HttpUser):
