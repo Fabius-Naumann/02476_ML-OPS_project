@@ -221,6 +221,46 @@ python -m pip install httpx
 
 # run the tests from the project root
 python -m pytest -q tests/integrationtests/test_api.py
-# for more verbose output:
+# for more verbose output: from the project root
 python -m pytest -vv tests/integrationtests/test_api.py
+```
+
+---
+
+## Load testing (Locust)
+
+Load testing measures how the API behaves under normal and peak conditions, helping identify bottlenecks and capacity.
+We use the Python tool [Locust](https://locust.io/) to simulate concurrent users hitting the core endpoints.
+
+our Locust script at
+`tests/performancetests/test_locustfile.py`.
+
+### Install (pip)
+
+Run from the project root:
+```bash
+pip install locust
+# #Remember to add httpx to your requirements.txt or pyproject.toml file
+```
+
+If the `locust` command is not on PATH, use the module form:
+```bash
+python -m locust --version
+```
+
+### Start the API (pip)
+
+Run the inference API locally:
+Run from  `src/sign_ml/`:
+
+```bash
+python -m uvicorn --reload --port 8000 api:app
+```
+
+### Run Locust (Web UI) from root
+
+```bash
+locust -f tests/performancetests/test_locustfile.py
+```
+Open <http://localhost:8089>, and set `Host` to <http://localhost:8000> (or your deployed URL). Then click Start.
 ```
