@@ -14,28 +14,33 @@ import os
 import sys
 from typing import Final
 
-import pytest
-
 
 def _performance_tests_enabled() -> bool:
     return os.getenv("SIGN_ML_RUN_PERFORMANCE_TESTS", "0").strip() not in {"0", "false", "False"}
 
 
-if sys.platform == "win32":
-    pytest.skip("Locust performance tests are not supported on Windows.", allow_module_level=True)
+_IS_PYTEST = "pytest" in sys.modules
 
-if not _performance_tests_enabled():
-    pytest.skip(
-        "Performance tests disabled (set SIGN_ML_RUN_PERFORMANCE_TESTS=1 to enable).",
-        allow_module_level=True,
-    )
+
+def _pytest_skip(reason: str) -> None:
+    import pytest
+
+    pytest.skip(reason, allow_module_level=True)
+
+
+if _IS_PYTEST and sys.platform == "win32":
+    _pytest_skip("Locust performance tests are not supported on Windows.")
+
+if _IS_PYTEST and not _performance_tests_enabled():
+    _pytest_skip("Performance tests disabled (set SIGN_ML_RUN_PERFORMANCE_TESTS=1 to enable).")
+
+
+from locust import HttpUser, between, task  # noqa: E402
 
 _ONE_BY_ONE_PNG_B64: Final[str] = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ySFTN8AAAAASUVORK5CYII="
 )
 _PNG_BYTES: Final[bytes] = base64.b64decode(_ONE_BY_ONE_PNG_B64)
-
-from locust import HttpUser, between, task  # noqa: E402
 
 
 class ApiUser(HttpUser):
