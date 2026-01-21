@@ -10,7 +10,7 @@ data/**
 !data/raw/
 !data/raw/.gitkeep
 reports/figures/**
-!reports/figures/.gitignore
+!reports/figures/.gitkeep
 
 # Weights & Biases local runs/logs
 wandb/
