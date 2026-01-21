@@ -9,10 +9,12 @@ This script defines a user behavior that exercises:
 
 from __future__ import annotations
 
-import base64
+import io
 import os
 import sys
 from typing import Final
+
+from PIL import Image
 
 
 def _performance_tests_enabled() -> bool:
@@ -37,10 +39,15 @@ if _IS_PYTEST and not _performance_tests_enabled():
 
 from locust import HttpUser, between, task  # noqa: E402
 
-_ONE_BY_ONE_PNG_B64: Final[str] = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ySFTN8AAAAASUVORK5CYII="
-)
-_PNG_BYTES: Final[bytes] = base64.b64decode(_ONE_BY_ONE_PNG_B64)
+
+def _png_bytes(*, size: tuple[int, int] = (8, 8), color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
+    image = Image.new("RGB", size, color=color)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+_PNG_BYTES: Final[bytes] = _png_bytes()
 
 
 class ApiUser(HttpUser):
@@ -69,7 +76,9 @@ class ApiUser(HttpUser):
     @task(3)
     def predict_small_image(self) -> None:
         files = {"image": ("x.png", _PNG_BYTES, "image/png")}
-        self.client.post("/predict", files=files)
+        with self.client.post("/predict", files=files, catch_response=True) as response:
+            if response.status_code != 200:
+                response.failure(f"{response.status_code}: {response.text}")
 
     @task(1)
     def read_admin_status(self) -> None:
