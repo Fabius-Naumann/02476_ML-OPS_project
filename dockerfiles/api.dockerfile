@@ -1,14 +1,26 @@
-FROM ghcr.io/astral-sh/uv:python3.12-alpine AS base
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
-COPY uv.lock uv.lock
-COPY pyproject.toml pyproject.toml
+WORKDIR /app
 
-RUN uv sync --frozen --no-install-project
+# ----------------------------
+# Install dependencies
+# ----------------------------
+COPY pyproject.toml ./
 
+# Force CPU torch/torchvision for Linux-in-Docker by rewriting the uv sources mapping
+RUN sed -i "s/{ index = \"pytorch-cu118\", marker = \"sys_platform != 'darwin'\" }/{ index = \"pytorch-cpu\", marker = \"sys_platform != 'darwin'\" }/g" pyproject.toml
+
+RUN uv sync --no-install-project
+
+# ----------------------------
+# Copy source
+# ----------------------------
 COPY src src/
-COPY README.md README.md
-COPY LICENSE LICENSE
+COPY README.md LICENSE ./
 
-RUN uv sync --frozen
+RUN uv sync
 
+# ----------------------------
+# Run API
+# ----------------------------
 ENTRYPOINT ["uv", "run", "uvicorn", "src.sign_ml.api:app", "--host", "0.0.0.0", "--port", "8000"]

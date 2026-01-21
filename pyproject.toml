@@ -52,16 +52,14 @@ dev = [
     "mypy>=1.19.1",
 ]
 
-
 [tool.uv.sources]
 torch = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
-    { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
-
+  { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
 ]
 torchvision = [
-    { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
-    { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cu118", marker = "sys_platform != 'darwin'" },
+  { index = "pytorch-cpu", marker = "sys_platform == 'darwin'" },
 ]
 
 [[tool.uv.index]]
@@ -78,7 +76,11 @@ explicit = true
 omit = ["tests/*"]
 
 [tool.coverage.report]
-omit = ["/tmp/*", "/private/var/folders/*", "*_remote_module_non_scriptable.py"]
+omit = [
+  "/tmp/*",
+  "/private/var/folders/*",
+  "*_remote_module_non_scriptable.py",
+]
 
 [tool.mypy]
 mypy_path = ["src"]
@@ -86,3 +88,4 @@ files = ["src"]
 namespace_packages = false
 exclude = "^(tmp/.*|wandb/.*)$"
 disable_error_code = ["import-untyped"]
+ignore_missing_imports = true
