@@ -13,8 +13,9 @@ Note: The CLI was removed. Use the programmatic entry points instead.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from time import perf_counter
-from typing import Any, cast
+from typing import Any, TypedDict
 
 import torch
 from loguru import logger
@@ -23,6 +24,23 @@ from torch.utils.data.distributed import DistributedSampler
 
 from sign_ml import CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
+
+
+class _LoaderKwargs(TypedDict, total=False):
+    """Typed kwargs supported by torch DataLoader in this project.
+
+    This narrows the types we pass via **kwargs to avoid using Any casts.
+    """
+
+    batch_size: int
+    shuffle: bool
+    sampler: DistributedSampler | None
+    num_workers: int
+    pin_memory: bool
+    worker_init_fn: Callable[[int], None] | None
+    prefetch_factor: int
+    persistent_workers: bool
+    multiprocessing_context: str
 
 
 def _distributed_env() -> tuple[int, int]:
@@ -68,7 +86,7 @@ def build_dataloader(
         )
         effective_shuffle = False
 
-    loader_kwargs: dict[str, Any] = {
+    loader_kwargs: _LoaderKwargs = {
         "batch_size": batch_size,
         "shuffle": effective_shuffle,
         "sampler": sampler,
@@ -82,7 +100,7 @@ def build_dataloader(
         if multiprocessing_context is not None:
             loader_kwargs["multiprocessing_context"] = multiprocessing_context
 
-    loader = DataLoader(dataset, **cast(Any, loader_kwargs))
+    loader = DataLoader(dataset, **loader_kwargs)
     return loader, sampler
 
 
@@ -92,7 +110,14 @@ def benchmark_dataloader_loading(
     *,
     batches_to_check: int,
 ) -> None:
-    """Benchmark how quickly batches can be produced by a DataLoader."""
+    """Benchmark DataLoader throughput and latency.
+
+    Notes:
+    - Excludes one warm-up batch to avoid cold-start overhead.
+    - ``avg_batch`` is an unweighted mean across measured batches; batch sizes may vary.
+    - ``imgs_per_s`` and ``s_per_img`` use the actual image count, so they reflect variable batch sizes
+      (for example, a smaller last batch when ``drop_last=False``).
+    """
 
     if sampler is not None:
         sampler.set_epoch(0)
@@ -152,8 +177,8 @@ def load_experiment_cfg(*, experiment_name: str | None) -> Any:
         raise TypeError(f"Expected configs/config.yaml to load as DictConfig, got {type(base_cfg)!r}")
 
     if experiment_name is None:
-        defaults_any = base_cfg.get("defaults", [])
-        defaults: list[Any] = list(defaults_any) if defaults_any is not None else []
+        raw_defaults = base_cfg.get("defaults", [])
+        defaults: list[Any] = list(raw_defaults) if raw_defaults is not None else []
         selected: str | None = None
         for item in defaults:
             if OmegaConf.is_dict(item) and item.get("experiment") is not None:
