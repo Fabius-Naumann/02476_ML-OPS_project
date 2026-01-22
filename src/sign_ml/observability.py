@@ -36,6 +36,7 @@ REQUEST_LATENCY = Histogram(
 # Inference logging (M27)
 # --------------------
 
+
 def log_prediction(input_summary: dict, output_summary: dict) -> None:
     record = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -49,6 +50,7 @@ def log_prediction(input_summary: dict, output_summary: dict) -> None:
 # --------------------
 # Metrics middleware (M28)
 # --------------------
+
 
 async def metrics_middleware(request: Request, call_next):
     start_time = time.time()

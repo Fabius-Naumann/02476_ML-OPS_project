@@ -18,18 +18,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from loguru import logger
 from PIL import Image
+from prometheus_client import generate_latest
 from pydantic import BaseModel
 from torchvision import transforms
-from sign_ml.observability import log_prediction, metrics_middleware
-from fastapi import Response
-from prometheus_client import generate_latest
-
 
 from sign_ml import BASE_DIR
 from sign_ml.model import build_model
+from sign_ml.observability import log_prediction, metrics_middleware
 
 DEFAULT_MODEL_PATH = BASE_DIR / "models" / "traffic_sign_model.pt"
 IMAGE_FILE = File(...)
@@ -644,7 +642,7 @@ def create_app() -> FastAPI:  # noqa: C901
                 "num_classes": state.num_classes,
             },
         )
-        
+
         return PredictResponse(
             predicted_class=predicted_class,
             probabilities=[float(p) for p in probs.detach().cpu().tolist()],
