@@ -1,0 +1,83 @@
+name: Model Registry Gate
+
+on:
+  repository_dispatch:
+    types: [gcs_model_finalized]
+  workflow_dispatch:
+    inputs:
+      gcs_uri:
+        description: "GCS URI to the model artifact (e.g., gs://bucket/models/model.pt)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  model_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          uv sync --locked --dev
+
+      - name: Resolve model URI
+        id: uri
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "repository_dispatch" ]]; then
+            uri="${{ github.event.client_payload.gcs_uri }}"
+          else
+            uri="${{ inputs.gcs_uri }}"
+          fi
+          if [[ -z "$uri" ]]; then
+            echo "Missing gcs_uri payload/input" >&2
+            exit 1
+          fi
+          echo "gcs_uri=$uri" >> "$GITHUB_OUTPUT"
+
+      - name: Auth with GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCLOUD_SERVICE_KEY }}
+
+      - name: Pull DVC data
+        run: |
+          dvc pull --no-run-cache
+
+      - name: Download model artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p models/registry
+          filename="$(basename "${{ steps.uri.outputs.gcs_uri }}")"
+          gcloud storage cp "${{ steps.uri.outputs.gcs_uri }}" "models/registry/$filename"
+          echo "MODEL_PATH=models/registry/$filename" >> "$GITHUB_ENV"
+
+      - name: Run model gate
+        env:
+          WANDB_MODE: disabled
+          WANDB_DISABLED: "true"
+        run: |
+          uv run python -m sign_ml.model_gate --model-path "$MODEL_PATH" --report model_gate.md
+
+      - name: Publish summary
+        shell: bash
+        run: |
+          cat model_gate.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-gate-report
+          path: model_gate.md
