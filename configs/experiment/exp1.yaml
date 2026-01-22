@@ -6,5 +6,14 @@ training:
   batch_size: 64
   epochs: 10
 
+data_loading:
+  # Defaults used by programmatic benchmark (sign_ml.data.benchmark_loading_from_config)
+  num_workers: 0
+  prefetch_factor: 2
+  persistent_workers: true
+  pin_memory: null
+  multiprocessing_context: spawn
+  batches_to_check: 64
+
 optimizer:
   lr: 0.001

@@ -1,3 +1,4 @@
+import sys
 import zipfile
 from collections.abc import Iterable
 from pathlib import Path
@@ -178,23 +179,94 @@ class TrafficSignsDataset(Dataset):
         return self.images[idx], self.targets[idx]
 
 
+def benchmark_loading_from_config(
+    *,
+    experiment: str | None = None,
+    split: str = "train",
+    distributed: bool = False,
+    batch_size: int | None = None,
+    num_workers: int | None = None,
+    prefetch_factor: int | None = None,
+    persistent_workers: bool | None = None,
+    pin_memory: bool | None = None,
+    multiprocessing_context: str | None = None,
+    batches_to_check: int | None = None,
+) -> None:
+    """Delegate to sign_ml.data_distributed for M29 benchmark.
+
+    Kept here for a stable programmatic entrypoint.
+    """
+
+    from sign_ml.data_distributed import (
+        benchmark_loading_from_config as _impl,
+    )
+
+    _impl(
+        experiment=experiment,
+        split=split,
+        distributed=distributed,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+        pin_memory=pin_memory,
+        multiprocessing_context=multiprocessing_context,
+        batches_to_check=batches_to_check,
+    )
+
+
+def _format_class_table(split: str, targets: torch.Tensor) -> str:
+    """Format class distribution statistics for a dataset split.
+
+    Args:
+        split: Dataset split name.
+        targets: 1D tensor of class labels.
+
+    Returns:
+        A formatted table string with counts and percentages.
+    """
+
+    classes, counts = torch.unique(targets, return_counts=True)
+    total = int(counts.sum().item())
+    sorted_pairs = sorted(zip(classes.tolist(), counts.tolist(), strict=False), key=lambda pair: pair[0])
+
+    header = f"{split} split class distribution"
+    lines = [header, "Class | Count | Percent", "----- | ----- | -------"]
+    for class_id, count in sorted_pairs:
+        percent = (count / total) * 100.0 if total > 0 else 0.0
+        lines.append(f"{class_id:>5} | {count:>5} | {percent:>6.2f}%")
+    lines.append(f"Total | {total:>5} | 100.00%")
+    return "\n".join(lines)
+
+
+def _visualize_and_stats(*, samples: int, output: Path) -> None:
+    """Generate sample plots and print class distribution tables.
+
+    Args:
+        samples: Number of samples per split to visualize.
+        output: Base output path; split-specific suffixes are added.
+    """
+
+    from sign_ml.visualize import plot_samples
+
+    train_ds = TrafficSignsDataset("train")
+    val_ds = TrafficSignsDataset("val")
+    test_ds = TrafficSignsDataset("test")
+
+    train_output = output.with_stem(output.stem + "_train")
+    val_output = output.with_stem(output.stem + "_val")
+    test_output = output.with_stem(output.stem + "_test")
+    plot_samples(train_ds, samples=samples, output_path=train_output)
+    plot_samples(val_ds, samples=samples, output_path=val_output)
+    plot_samples(test_ds, samples=samples, output_path=test_output)
+
+    logger.info("\n{}", _format_class_table("Train", train_ds.targets))
+    logger.info("\n{}", _format_class_table("Val", val_ds.targets))
+    logger.info("\n{}", _format_class_table("Test", test_ds.targets))
+
+
 # CLI entry point only available if run as a script
 if __name__ == "__main__":
-
-    def _format_class_table(split: str, targets: torch.Tensor) -> str:
-        """Format class distribution statistics for a dataset split."""
-
-        classes, counts = torch.unique(targets, return_counts=True)
-        total = int(counts.sum().item())
-        sorted_pairs = sorted(zip(classes.tolist(), counts.tolist(), strict=False), key=lambda pair: pair[0])
-
-        header = f"{split} split class distribution"
-        lines = [header, "Class | Count | Percent", "----- | ----- | -------"]
-        for class_id, count in sorted_pairs:
-            percent = (count / total) * 100.0 if total > 0 else 0.0
-            lines.append(f"{class_id:>5} | {count:>5} | {percent:>6.2f}%")
-        lines.append(f"Total | {total:>5} | 100.00%")
-        return "\n".join(lines)
 
     def main(
         preprocess: bool = PREPROCESS_OPTION,
@@ -213,23 +285,11 @@ if __name__ == "__main__":
             preprocess_data()
             return
 
-        from sign_ml.visualize import plot_samples
+        _visualize_and_stats(samples=samples, output=output)
 
-        train_ds = TrafficSignsDataset("train")
-        val_ds = TrafficSignsDataset("val")
-        test_ds = TrafficSignsDataset("test")
-
-        # plot samples
-        train_output = output.with_stem(output.stem + "_train")
-        val_output = output.with_stem(output.stem + "_val")
-        test_output = output.with_stem(output.stem + "_test")
-        plot_samples(train_ds, samples=samples, output_path=train_output)
-        plot_samples(val_ds, samples=samples, output_path=val_output)
-        plot_samples(test_ds, samples=samples, output_path=test_output)
-
-        # print statistics
-        logger.info("\n{}", _format_class_table("Train", train_ds.targets))
-        logger.info("\n{}", _format_class_table("Val", val_ds.targets))
-        logger.info("\n{}", _format_class_table("Test", test_ds.targets))
-
-    typer.run(main)
+    # If no CLI args, run benchmark first then generate figures + stats with defaults.
+    if len(sys.argv) == 1:
+        benchmark_loading_from_config()
+        _visualize_and_stats(samples=9, output=FIGURES_DIR / "samples.png")
+    else:
+        typer.run(main)
