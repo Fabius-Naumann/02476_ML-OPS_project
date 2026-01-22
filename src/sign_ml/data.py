@@ -4,7 +4,7 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 from time import perf_counter
-from typing import Any
+from typing import Any, cast
 
 import torch
 import typer
@@ -242,7 +242,7 @@ def build_dataloader(
         )
         effective_shuffle = False
 
-    loader_kwargs: dict[str, object] = {
+    loader_kwargs: dict[str, Any] = {
         "batch_size": batch_size,
         "shuffle": effective_shuffle,
         "sampler": sampler,
@@ -256,7 +256,9 @@ def build_dataloader(
         if multiprocessing_context is not None:
             loader_kwargs["multiprocessing_context"] = multiprocessing_context
 
-    loader = DataLoader(dataset, **loader_kwargs)
+    # Torch's DataLoader typing is strict around kwargs; using a dynamic kwargs dict
+    # is fine at runtime, but mypy can't verify the individual key/value types.
+    loader = DataLoader(dataset, **cast(Any, loader_kwargs))
     return loader, sampler
 
 
@@ -318,12 +320,15 @@ def load_experiment_cfg(*, experiment_name: str | None) -> Any:
         An OmegaConf configuration object with the selected experiment merged in.
     """
 
-    from omegaconf import OmegaConf
+    from omegaconf import DictConfig, OmegaConf
 
     base_cfg = OmegaConf.load(CONFIGS_DIR / "config.yaml")
+    if not isinstance(base_cfg, DictConfig):
+        raise TypeError(f"Expected configs/config.yaml to load as DictConfig, got {type(base_cfg)!r}")
 
     if experiment_name is None:
-        defaults = base_cfg.get("defaults", [])
+        defaults_any = base_cfg.get("defaults", [])
+        defaults: list[Any] = list(defaults_any) if defaults_any is not None else []
         selected: str | None = None
         for item in defaults:
             if OmegaConf.is_dict(item) and item.get("experiment") is not None:
