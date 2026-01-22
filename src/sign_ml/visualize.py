@@ -87,3 +87,44 @@ def _save_figure(output_path: Path, fig: plt.Figure) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=FIGURE_DPI)
     logger.info("Saved figure to {}", output_path)
+
+
+def plot_class_distribution(
+    distributions: dict[str, torch.Tensor],
+    output_path: Path,
+) -> Path:
+    """Plot class distribution histograms for dataset splits."""
+
+    if not distributions:
+        raise ValueError("distributions must not be empty")
+
+    split_names = list(distributions.keys())
+    counts = [distributions[name] for name in split_names]
+
+    max_classes = max(count.shape[0] for count in counts)
+    aligned = [torch.nn.functional.pad(count, (0, max_classes - count.shape[0])) for count in counts]
+
+    x_values = list(range(max_classes))
+    rows = len(split_names)
+    fig, axes = plt.subplots(rows, 1, figsize=(max(10.0, max_classes * 0.2), 2.5 * rows), sharex=True)
+    if isinstance(axes, list):
+        axes_list = axes
+    elif hasattr(axes, "flatten"):
+        axes_list = axes.flatten().tolist()
+    else:
+        axes_list = [axes]
+
+    for ax, name, count in zip(axes_list, split_names, aligned, strict=False):
+        ax.bar(x_values, count.cpu().numpy(), color="#4C78A8")
+        ax.set_title(f"{name} split class distribution")
+        ax.set_ylabel("Count")
+        ax.grid(axis="y", alpha=0.3)
+
+    axes_list[-1].set_xlabel("Class")
+    tick_step = max(1, max_classes // 20)
+    axes_list[-1].set_xticks(x_values[::tick_step])
+
+    fig.tight_layout()
+    _save_figure(output_path, fig)
+    plt.close(fig)
+    return output_path
