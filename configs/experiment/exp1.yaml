@@ -7,7 +7,7 @@ training:
   epochs: 10
 
 data_loading:
-  # Defaults used by `python -m sign_ml.data --benchmark-loading`
+  # Defaults used by programmatic benchmark (sign_ml.data.benchmark_loading_from_config)
   num_workers: 0
   prefetch_factor: 2
   persistent_workers: true
