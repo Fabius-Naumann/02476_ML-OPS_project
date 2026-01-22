@@ -523,9 +523,32 @@ if __name__ == "__main__":
         logger.info("\n{}", _format_class_table("Val", val_ds.targets))
         logger.info("\n{}", _format_class_table("Test", test_ds.targets))
 
+    def _run_visualize_and_stats() -> None:
+        from sign_ml.visualize import plot_samples
+
+        train_ds = TrafficSignsDataset("train")
+        val_ds = TrafficSignsDataset("val")
+        test_ds = TrafficSignsDataset("test")
+
+        output = FIGURES_DIR / "samples.png"
+        samples = 9
+        train_output = output.with_stem(output.stem + "_train")
+        val_output = output.with_stem(output.stem + "_val")
+        test_output = output.with_stem(output.stem + "_test")
+        plot_samples(train_ds, samples=samples, output_path=train_output)
+        plot_samples(val_ds, samples=samples, output_path=val_output)
+        plot_samples(test_ds, samples=samples, output_path=test_output)
+
+        logger.info("\n{}", _format_class_table("Train", train_ds.targets))
+        logger.info("\n{}", _format_class_table("Val", val_ds.targets))
+        logger.info("\n{}", _format_class_table("Test", test_ds.targets))
+
     # If you run this file directly with no arguments, we default to the M29 benchmark.
     # If you pass args (e.g. --help or overrides), Typer handles CLI parsing.
     if len(sys.argv) == 1:
+        logger.info("Running M29 DataLoader benchmark (no-args default)")
         benchmark_loading_from_config()
+        logger.info("Generating sample plots + class distribution tables")
+        _run_visualize_and_stats()
     else:
         typer.run(main)
