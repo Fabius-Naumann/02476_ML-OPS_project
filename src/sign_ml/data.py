@@ -273,12 +273,26 @@ def benchmark_dataloader_loading(
     if sampler is not None:
         sampler.set_epoch(0)
 
+    # The first batch can include one-time overhead (e.g., worker spawning, prefetch queue fill).
+    # Warm up by pulling one batch without timing, then measure subsequent batches.
+    warmup_batches = 1
+
     batch_times: list[float] = []
     images_total = 0
 
+    data_iter = iter(dataloader)
+    for _ in range(warmup_batches):
+        try:
+            next(data_iter)
+        except StopIteration:
+            logger.warning("No batches produced; nothing to benchmark.")
+            return
+
     start = perf_counter()
-    for batch_idx, (images, _labels) in enumerate(dataloader):
-        if batch_idx >= batches_to_check:
+    for _ in range(batches_to_check):
+        try:
+            images, _labels = next(data_iter)
+        except StopIteration:
             break
         end = perf_counter()
         batch_times.append(end - start)
@@ -294,8 +308,9 @@ def benchmark_dataloader_loading(
     imgs_per_s = images_total / total_s if total_s > 0 else float("inf")
     s_per_img = total_s / images_total if images_total > 0 else float("inf")
     logger.info(
-        "Benchmark: batches={} images={} total={:.3f}s avg_batch={:.4f}s throughput={:.1f} imgs/s "
+        "Benchmark: warmup_batches={} batches={} images={} total={:.3f}s avg_batch={:.4f}s throughput={:.1f} imgs/s "
         "({:.6f}s/img = {:.3f}ms/img)",
+        warmup_batches,
         len(batch_times),
         images_total,
         total_s,
@@ -342,6 +357,18 @@ def load_experiment_cfg(*, experiment_name: str | None) -> Any:
         )
 
     exp_cfg_path = CONFIGS_DIR / "experiment" / f"{experiment_name}.yaml"
+    if not exp_cfg_path.is_file():
+        experiments_dir = CONFIGS_DIR / "experiment"
+        available = sorted(p.stem for p in experiments_dir.glob("*.yaml"))
+        if available:
+            raise FileNotFoundError(
+                f"Experiment config file for '{experiment_name}' not found at {exp_cfg_path}. "
+                f"Available experiments: {', '.join(available)}"
+            )
+        raise FileNotFoundError(
+            f"Experiment config file for '{experiment_name}' not found at {exp_cfg_path}. "
+            f"No experiment configs were found in {experiments_dir}."
+        )
     exp_cfg = OmegaConf.load(exp_cfg_path)
     return OmegaConf.merge(base_cfg, {"experiment": exp_cfg})
 
@@ -388,7 +415,7 @@ def benchmark_loading_from_config(
     cfg_persistent_workers = bool(dl_cfg.get("persistent_workers", False))
     cfg_pin_memory = dl_cfg.get("pin_memory", None)
     cfg_multiprocessing_context = dl_cfg.get("multiprocessing_context", None)
-    cfg_batches_to_check = int(dl_cfg.get("batches_to_check", 50))
+    cfg_batches_to_check = int(dl_cfg.get("batches_to_check", 64))
 
     batch_size = cfg_batch_size if batch_size is None else int(batch_size)
     num_workers = cfg_num_workers if num_workers is None else int(num_workers)
@@ -437,7 +464,7 @@ def benchmark_loading_from_config(
 
 # CLI entry point only available if run as a script
 if __name__ == "__main__":
-    BENCHMARK_OPTION = typer.Option(False, "--benchmark-loading", "-get_timing")
+    BENCHMARK_OPTION = typer.Option(False, "--benchmark-loading", "--get-timing")
     EXPERIMENT_OPTION = typer.Option(None, "--experiment")
     SPLIT_OPTION = typer.Option("train", "--split")
     BATCH_SIZE_OPTION = typer.Option(None, "--batch-size", min=1)

@@ -7,7 +7,7 @@ training:
   epochs: 10
 
 data_loading:
-  # Defaults used by `python -m sign_ml.data -get_timing`
+  # Defaults used by `python -m sign_ml.data --get-timing`
   num_workers: 0
   prefetch_factor: 2
   persistent_workers: true
