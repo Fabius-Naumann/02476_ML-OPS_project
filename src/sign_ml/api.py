@@ -23,6 +23,10 @@ from loguru import logger
 from PIL import Image
 from pydantic import BaseModel
 from torchvision import transforms
+from sign_ml.observability import log_prediction, metrics_middleware
+from fastapi import Response
+from prometheus_client import generate_latest
+
 
 from sign_ml import BASE_DIR
 from sign_ml.model import build_model
@@ -496,6 +500,12 @@ def create_app() -> FastAPI:  # noqa: C901
 
     app = FastAPI(title="Traffic Sign Inference API", version="0.1.0", lifespan=lifespan)
 
+    app.middleware("http")(metrics_middleware)
+
+    @app.get("/metrics", tags=["monitoring"])
+    def metrics():
+        return Response(generate_latest(), media_type="text/plain")
+
     @app.get("/", tags=["meta"])
     def root() -> dict[str, str]:
         """Root endpoint with a short usage hint."""
@@ -623,6 +633,18 @@ def create_app() -> FastAPI:  # noqa: C901
             probs = torch.softmax(logits, dim=1).squeeze(0)
             predicted_class = int(torch.argmax(probs).item())
 
+        log_prediction(
+            input_summary={
+                "filename": image.filename,
+                "content_type": image.content_type,
+                "image_size_bytes": len(content),
+            },
+            output_summary={
+                "predicted_class": predicted_class,
+                "num_classes": state.num_classes,
+            },
+        )
+        
         return PredictResponse(
             predicted_class=predicted_class,
             probabilities=[float(p) for p in probs.detach().cpu().tolist()],
