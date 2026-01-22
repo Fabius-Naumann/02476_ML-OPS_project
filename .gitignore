@@ -1,7 +1,3 @@
-outputs/**
-!outputs/.gitkeep
-models/**
-!models/.gitkeep
 # additional custom ignores
 data/**
 !data/.gitkeep
@@ -11,6 +7,10 @@ data/**
 !data/raw/.gitkeep
 reports/figures/**
 !reports/figures/.gitkeep
+outputs/**
+!outputs/.gitkeep
+models/**
+!models/.gitkeep
 
 # Weights & Biases local runs/logs
 wandb/
