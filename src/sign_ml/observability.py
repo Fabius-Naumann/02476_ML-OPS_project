@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Request, Response
@@ -39,7 +39,7 @@ REQUEST_LATENCY = Histogram(
 
 def log_prediction(input_summary: dict, output_summary: dict) -> None:
     record = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "input": input_summary,
         "output": output_summary,
     }

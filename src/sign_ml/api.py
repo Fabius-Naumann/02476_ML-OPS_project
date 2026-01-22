@@ -6,6 +6,9 @@ trained PyTorch model.
 
 from __future__ import annotations
 
+# --------------------
+# Standard library
+# --------------------
 import datetime
 import io
 import os
@@ -17,6 +20,9 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# --------------------
+# Third-party
+# --------------------
 import torch
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from loguru import logger
@@ -25,6 +31,9 @@ from prometheus_client import generate_latest
 from pydantic import BaseModel
 from torchvision import transforms
 
+# --------------------
+# Local application
+# --------------------
 from sign_ml import BASE_DIR
 from sign_ml.model import build_model
 from sign_ml.observability import log_prediction, metrics_middleware
@@ -642,7 +651,6 @@ def create_app() -> FastAPI:  # noqa: C901
                 "num_classes": state.num_classes,
             },
         )
-
         return PredictResponse(
             predicted_class=predicted_class,
             probabilities=[float(p) for p in probs.detach().cpu().tolist()],
