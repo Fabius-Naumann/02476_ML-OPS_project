@@ -1,11 +1,12 @@
-import streamlit as st
-import requests
-from PIL import Image
-import io
 import os
-from google.cloud import run_v2
 
-@st.cache_resource  
+import requests
+import streamlit as st
+from google.cloud import run_v2
+from PIL import Image
+
+
+@st.cache_resource
 def get_backend_url():
     """Get the URL of the backend service."""
     try:
@@ -17,7 +18,7 @@ def get_backend_url():
                 return service.uri
     except Exception as e:
         st.warning(f"Could not fetch backend URL from Cloud Run: {e}")
-    
+
     # Fall back to environment variable
     backend_url = os.environ.get("BACKEND", None)
     if not backend_url:
@@ -35,6 +36,7 @@ def check_backend_health(backend_url):
         return None
     except Exception:
         return None
+
 
 def get_class_name(class_id):
     """Map class ID to traffic sign name based on your dataset."""
@@ -90,48 +92,45 @@ def get_class_name(class_id):
         48: "Under Construction",
         49: "Uneven road ahead",
         50: "Fences",
-        51: "Heavy Vehicle Accidents"
+        51: "Heavy Vehicle Accidents",
     }
     return class_names.get(class_id, f"Unknown Sign (Class {class_id})")
 
+
 def main():
-    st.set_page_config(
-        page_title="Traffic Sign Classification",
-        page_icon="🚦",
-        layout="wide"
-    )
-    
+    st.set_page_config(page_title="Traffic Sign Classification", page_icon="🚦", layout="wide")
+
     st.title("🚦 Traffic Sign Classification")
     st.markdown("Upload a traffic sign image to get real-time predictions from our ML model")
-    
+
     # Get backend URL
     backend_url = get_backend_url()
-    
+
     # Create two columns for layout
     col1, col2 = st.columns([1, 1])
-    
+
     with col1:
         st.subheader("📤 Upload Image")
-        
+
         # File uploader
         uploaded_file = st.file_uploader(
             "Choose a traffic sign image...",
             type=["jpg", "jpeg", "png"],
-            help="Upload an image file (JPG, JPEG, or PNG)"
+            help="Upload an image file (JPG, JPEG, or PNG)",
         )
-        
+
         if uploaded_file is not None:
             # Display the uploaded image
             image = Image.open(uploaded_file)
             st.image(image, caption="Uploaded Image", use_column_width=True)
-            
+
             # Image info
             st.caption(f"📏 Size: {image.size[0]}x{image.size[1]} pixels")
             st.caption(f"📝 Format: {image.format}")
-    
+
     with col2:
         st.subheader("🔮 Prediction Results")
-        
+
         if uploaded_file is not None:
             # Predict button
             if st.button("🚀 Classify Traffic Sign", use_container_width=True, type="primary"):
@@ -142,58 +141,52 @@ def main():
                         try:
                             # Reset file pointer
                             uploaded_file.seek(0)
-                            
+
                             # Prepare the file for upload
                             files = {"image": (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                            
+
                             # Send request to backend
-                            response = requests.post(
-                                f"{backend_url}/predict",
-                                files=files,
-                                timeout=30
-                            )
-                            
+                            response = requests.post(f"{backend_url}/predict", files=files, timeout=30)
+
                             if response.status_code == 200:
                                 result = response.json()
-                                
+
                                 # Extract data from response
                                 predicted_class = result["predicted_class"]
                                 probabilities = result["probabilities"]
                                 num_classes = result["num_classes"]
-                                
+
                                 # Display prediction
                                 st.success("✅ Classification Complete!")
-                                
+
                                 # Main prediction
                                 class_name = get_class_name(predicted_class)
                                 confidence = probabilities[predicted_class] * 100
-                                
+
                                 st.metric(
                                     label="Predicted Traffic Sign",
                                     value=class_name,
-                                    delta=f"{confidence:.1f}% confidence"
+                                    delta=f"{confidence:.1f}% confidence",
                                 )
-                                
+
                                 # Show top 3 predictions
                                 st.markdown("### Top 3 Predictions")
-                                
+
                                 # Get top 3 classes
                                 top_3_indices = sorted(
-                                    range(len(probabilities)), 
-                                    key=lambda i: probabilities[i], 
-                                    reverse=True
+                                    range(len(probabilities)), key=lambda i: probabilities[i], reverse=True
                                 )[:3]
-                                
+
                                 for idx in top_3_indices:
                                     prob = probabilities[idx] * 100
                                     name = get_class_name(idx)
                                     st.progress(prob / 100)
                                     st.caption(f"{name}: {prob:.2f}%")
-                                
+
                                 # Full response in expandable section
                                 with st.expander("🔍 View Full Response"):
                                     st.json(result)
-                            
+
                             elif response.status_code == 503:
                                 st.error("❌ Model not loaded on backend. Please check backend status.")
                             elif response.status_code == 415:
@@ -204,30 +197,30 @@ def main():
                                 st.error(f"❌ Error: Received status code {response.status_code}")
                                 with st.expander("View error details"):
                                     st.code(response.text)
-                        
+
                         except requests.exceptions.ConnectionError:
                             st.error("❌ Could not connect to backend. Please check if the backend is running.")
                         except requests.exceptions.Timeout:
                             st.error("❌ Request timed out. The backend might be slow or unavailable.")
                         except Exception as e:
-                            st.error(f"❌ An error occurred: {str(e)}")
+                            st.error(f"❌ An error occurred: {e!s}")
         else:
             st.info("👆 Upload an image to get started")
-    
+
     # Sidebar with backend info and features
     with st.sidebar:
         st.header("ℹ️ System Information")
-        
+
         # Backend status
         if backend_url:
             health_data = check_backend_health(backend_url)
-            
+
             if health_data:
                 status = health_data.get("status", "unknown")
                 is_loaded = health_data.get("is_loaded", False)
                 num_classes = health_data.get("num_classes")
                 weights_file = health_data.get("weights_file", "N/A")
-                
+
                 if status == "ok" and is_loaded:
                     st.success("✅ Backend Online")
                     st.caption(f"**Model Classes:** {num_classes}")
@@ -236,38 +229,38 @@ def main():
                     st.warning("⚠️ Backend Not Ready")
                     if health_data.get("detail"):
                         st.caption(f"Error: {health_data['detail']}")
-                
+
                 st.caption(f"**URL:** {backend_url}")
             else:
                 st.error("❌ Backend Unavailable")
                 st.caption(f"**URL:** {backend_url}")
         else:
             st.warning("⚠️ Backend Not Configured")
-        
+
         st.divider()
-        
+
         st.header("📖 How to Use")
         st.markdown("""
         1. **Upload** a traffic sign image
         2. Click **Classify Traffic Sign**
         3. View the **prediction results**
-        
+
         The model will identify the traffic sign and show confidence scores for all possible classes.
         """)
-        
+
         st.divider()
-        
+
         st.header("🎯 Model Info")
         st.markdown("""
         This application uses a PyTorch-based CNN model trained on traffic sign images.
-        
+
         **Supported formats:**
         - JPG/JPEG
         - PNG
-        
+
         **Max file size:** 5 MB
         """)
-        
+
         # Link to documentation or admin features
         with st.expander("🔧 Admin Features"):
             st.markdown("""
@@ -277,6 +270,7 @@ def main():
             - `/admin/train_sync` - Train model
             - `/admin/evaluate_sync` - Evaluate model
             """)
+
 
 if __name__ == "__main__":
     main()
