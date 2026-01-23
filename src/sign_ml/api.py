@@ -6,6 +6,9 @@ trained PyTorch model.
 
 from __future__ import annotations
 
+# --------------------
+# Standard library
+# --------------------
 import datetime
 import io
 import os
@@ -17,15 +20,23 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# --------------------
+# Third-party
+# --------------------
 import torch
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from loguru import logger
 from PIL import Image
+from prometheus_client import generate_latest
 from pydantic import BaseModel
 from torchvision import transforms
 
+# --------------------
+# Local application
+# --------------------
 from sign_ml import BASE_DIR
 from sign_ml.model import build_model
+from sign_ml.observability import log_prediction, metrics_middleware
 
 DEFAULT_MODEL_PATH = BASE_DIR / "models" / "traffic_sign_model.pt"
 IMAGE_FILE = File(...)
@@ -496,6 +507,12 @@ def create_app() -> FastAPI:  # noqa: C901
 
     app = FastAPI(title="Traffic Sign Inference API", version="0.1.0", lifespan=lifespan)
 
+    app.middleware("http")(metrics_middleware)
+
+    @app.get("/metrics", tags=["monitoring"])
+    def metrics():
+        return Response(generate_latest(), media_type="text/plain")
+
     @app.get("/", tags=["meta"])
     def root() -> dict[str, str]:
         """Root endpoint with a short usage hint."""
@@ -623,6 +640,17 @@ def create_app() -> FastAPI:  # noqa: C901
             probs = torch.softmax(logits, dim=1).squeeze(0)
             predicted_class = int(torch.argmax(probs).item())
 
+        log_prediction(
+            input_summary={
+                "filename": image.filename,
+                "content_type": image.content_type,
+                "image_size_bytes": len(content),
+            },
+            output_summary={
+                "predicted_class": predicted_class,
+                "num_classes": state.num_classes,
+            },
+        )
         return PredictResponse(
             predicted_class=predicted_class,
             probabilities=[float(p) for p in probs.detach().cpu().tolist()],
