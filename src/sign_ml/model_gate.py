@@ -194,10 +194,16 @@ def _write_report(
 
 
 def _load_torch_model_from_file(model_path: Path, *, num_classes: int, device: torch.device) -> nn.Module:
-    """Load a PyTorch model from a state dict or pickled module."""
+    """Load a PyTorch model from a state dict or pickled module.
 
-    obj = torch.load(model_path, map_location=device)
+    Note:
+        This function intentionally uses ``torch.load(..., weights_only=False)`` so it can
+        load both plain state dicts and pickled ``nn.Module`` objects. Because this
+        allows unpickling arbitrary Python objects, it should only be used with
+        trusted model artifacts.
+    """
 
+    obj = torch.load(model_path, map_location=device, weights_only=False)
     if isinstance(obj, nn.Module):
         return obj.to(device)
 
