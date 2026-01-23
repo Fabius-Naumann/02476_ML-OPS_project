@@ -1,0 +1,25 @@
+defaults:
+  - experiment: exp1
+  - _self_
+
+gcp:
+  project_id: infra-sublime-484214-q1
+  bucket: dvcmlopsjan
+
+data:
+  train_path: gs://dvcmlopsjan/data/processed/train_preprocessed.pt
+  val_path: gs://dvcmlopsjan/data/processed/val_preprocessed.pt
+
+model:
+  num_classes: 52
+  image_size: 64
+
+training:
+  device: auto
+  batch_size: 64
+  num_workers: 4
+  lr: 0.001
+  epochs: 10
+
+wandb:
+  enabled: true
