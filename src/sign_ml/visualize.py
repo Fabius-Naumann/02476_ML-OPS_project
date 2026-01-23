@@ -107,10 +107,7 @@ def plot_class_distribution(
     x_values = list(range(max_classes))
     rows = len(split_names)
     fig, axes = plt.subplots(rows, 1, figsize=(max(10.0, max_classes * 0.2), 2.5 * rows), sharex=True)
-    if hasattr(axes, "flatten"):
-        axes_list = axes.flatten().tolist()
-    else:
-        axes_list = [axes]
+    axes_list = axes.flatten().tolist() if hasattr(axes, "flatten") else [axes]
 
     for ax, name, count in zip(axes_list, split_names, aligned, strict=False):
         ax.bar(x_values, count.cpu().numpy(), color="#4C78A8")
