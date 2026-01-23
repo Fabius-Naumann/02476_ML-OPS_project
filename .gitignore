@@ -5,7 +5,6 @@ data/**
 !data/processed/.gitkeep
 !data/raw/
 !data/raw/.gitkeep
-reports/figures/**
 !reports/figures/.gitkeep
 outputs/**
 !outputs/.gitkeep
