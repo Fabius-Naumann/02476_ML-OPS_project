@@ -99,12 +99,12 @@ will check the repositories and the code to verify your answers.
 
 * [x] Check how robust your model is towards data drifting (M27)
 * [x] Setup collection of input-output data from your deployed application (M27)
-* [ ] Deploy to the cloud a drift detection API (M27)
+* [ ] [started but not finished] Deploy to the cloud a drift detection API (M27)
 * [x] Instrument your API with a couple of system metrics (M28)
 * [ ] Setup cloud monitoring of your instrumented application (M28)
 * [x] Create one or more alert systems in GCP to alert you if your app is not behaving correctly (M28)
 * [x] If applicable, optimize the performance of your data loading using distributed data loading (M29)
-* [ ] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
+* [ ] [started but not finished] If applicable, optimize the performance of your training pipeline by using distributed training (M30)
 * [ ] Play around with quantization, compilation and pruning for you trained models to increase inference speed (M31)
 
 ### Extra
@@ -112,7 +112,7 @@ will check the repositories and the code to verify your answers.
 * [ ] Write some documentation for your application (M32)
 * [ ] Publish the documentation to GitHub Pages (M32)
 * [x] Revisit your initial project description. Did the project turn out as you wanted?
-* [x] Create an architectural diagram over your MLOps pipeline
+* [ ] [only described as text] Create an architectural diagram over your MLOps pipeline
 * [x] Make sure all group members have an understanding about all parts of the project
 * [x] Uploaded all your code to GitHub
 
@@ -670,7 +670,17 @@ These extensions introduced a user-facing interface and additional real-world ML
 >
 > Answer:
 
---- question 29 fill here ---
+The architecture starts in our local development environment, where we maintain the codebase and dependencies with `uv`/`uv.lock` to ensure reproducible installs across machines. Experiments are configured via Hydra YAML files (`configs/config.yaml` plus per-experiment configs), which define hyperparameters, paths, and runtime options.
+
+Data and model artifacts are versioned with DVC. The repository tracks the `data/` directory with DVC and uses a Google Cloud Storage (GCS) bucket as the DVC remote. This enables reproducible training because each git commit can be paired with an exact data version that can be restored via `dvc pull`.
+
+Whenever code is pushed or a PR is opened, GitHub Actions runs automated checks (linting/formatting/typing where enabled) and executes the test suite across multiple OS and Python versions. We also added workflows that react to data changes: when DVC files change in a PR, CI pulls the corresponding data from GCS, computes dataset statistics, and posts a small markdown report back to the PR (CML comment). This gives fast feedback when data changes might impact the pipeline.
+
+Training runs can be executed locally (Docker or direct `uv run`) and were also executed in the cloud using Vertex AI. For cloud training, the training code runs as a managed job that reads the dataset from GCS and writes resulting model artifacts back to cloud storage. During training and evaluation we log metrics (loss/accuracy) and artifacts to Weights & Biases to make runs comparable and reproducible. Docker images are built for the training and inference workloads, and images can be stored in Artifact Registry for distribution.
+
+For serving, we provide a FastAPI inference service packaged in Docker. The service loads the trained model at startup, exposes prediction endpoints, and includes Prometheus-compatible `/metrics` for observability. We also log input/output summaries for inference requests to support later analysis (e.g., drift checks). A lightweight frontend can call the API to provide an end-to-end user flow from image upload to prediction.
+
+Through this setup, we managed implementing quite some MLOps features but certain aspects could be better connected and tested. The whole workflow is definetly far from optimised and continuous workflow integrations with the cloud should be even more improved in case the project was to be continued.
 
 ### Question 30
 
