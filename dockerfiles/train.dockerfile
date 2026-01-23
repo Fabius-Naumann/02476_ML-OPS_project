@@ -2,6 +2,8 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm
 
 WORKDIR /app
 
+ENV SIGN_ML_BASE_DIR=/app
+
 # Install dependencies from lockfile
 COPY pyproject.toml ./
 
@@ -16,6 +18,10 @@ COPY src src/
 COPY configs configs/
 COPY README.md README.md
 COPY LICENSE LICENSE
+
+# Copy data so training can run inside the container
+COPY data/processed data/processed
+COPY data/raw/traffic_signs_merged.zip data/raw/
 
 RUN uv sync
 

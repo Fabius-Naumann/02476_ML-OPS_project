@@ -1,6 +1,8 @@
+import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+_default_base_dir = Path(__file__).resolve().parent.parent.parent
+BASE_DIR = Path(os.environ.get("SIGN_ML_BASE_DIR", str(_default_base_dir)))
 
 # data paths
 DATA_DIR = BASE_DIR / "data"

@@ -3,6 +3,7 @@ import datetime
 import os
 import random
 from pathlib import Path
+from typing import Any
 
 import hydra
 import numpy as np
@@ -15,9 +16,11 @@ from hydra.utils import instantiate
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 from sign_ml import BASE_DIR, CONFIGS_DIR
 from sign_ml.data import TrafficSignsDataset
+from sign_ml.Distributed_Training import cleanup_distributed, init_distributed, reduce_loss_accuracy, unwrap_model
 from sign_ml.model import build_model
 from sign_ml.utils import (
     _bool_from_cfg,
@@ -73,9 +76,7 @@ def train_one_epoch_profiled(
 
         prof.step()
 
-    if total == 0:
-        return 0.0, 0.0
-    return total_loss / total, 100.0 * correct / total
+    return reduce_loss_accuracy(loss_sum=total_loss, correct=correct, total=total, device=device)
 
 
 def _set_seed(seed: int) -> None:
@@ -126,7 +127,7 @@ def train_one_epoch(model, loader, criterion, optimizer, device: torch.device):
         correct += (preds == labels).sum().item()
         total += labels.size(0)
 
-    return total_loss / total, 100.0 * correct / total
+    return reduce_loss_accuracy(loss_sum=total_loss, correct=correct, total=total, device=device)
 
 
 def validate(model, loader, criterion, device: torch.device):
@@ -152,7 +153,7 @@ def validate(model, loader, criterion, device: torch.device):
             correct += (preds == labels).sum().item()
             total += labels.size(0)
 
-    return total_loss / total, 100.0 * correct / total
+    return reduce_loss_accuracy(loss_sum=total_loss, correct=correct, total=total, device=device)
 
 
 def _run_profiled_epoch_zero(
@@ -212,24 +213,36 @@ def _run_profiled_epoch_zero(
     return train_loss, train_acc
 
 
-def train(cfg: DictConfig) -> Path:
-    """Train the traffic sign model using a Hydra configuration."""
+def _setup_distributed(cfg: DictConfig) -> tuple[Any, torch.device]:
+    """Initialize (optional) distributed training and return (context, device)."""
 
-    run_timestamp = datetime.datetime.now()
+    distributed_cfg = _bool_from_cfg(cfg, "distributed.enabled", default=False)
+    distributed_env = int(os.getenv("WORLD_SIZE", "1")) > 1
+    distributed_enabled = distributed_cfg or distributed_env
+
+    base_device = device_from_cfg(str(cfg.device))
+    dist_ctx = init_distributed(enable=distributed_enabled, base_device=base_device)
+    return dist_ctx, dist_ctx.device
+
+
+def _setup_logging(*, dist_ctx: Any, run_timestamp: datetime.datetime) -> Path:
+    """Set up output directory and file logging (rank-safe)."""
+
     date_str = run_timestamp.strftime("%Y-%m-%d")
     time_str = run_timestamp.strftime("%H-%M-%S")
-    log_dir = Path("outputs") / date_str / time_str
+    log_suffix = f"-rank{dist_ctx.rank}" if dist_ctx.enabled else ""
+    log_dir = Path("outputs") / date_str / f"{time_str}{log_suffix}"
     log_dir.mkdir(parents=True, exist_ok=True)
-    logger.add(str(log_dir / "train.log"))
+    logger.add(str(log_dir / f"train{log_suffix}.log"))
+    return log_dir
 
-    logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
 
-    hparams = cfg.experiment
+def _init_wandb_if_main(*, cfg: DictConfig, dist_ctx: Any, hparams: Any) -> bool:
+    """Initialize W&B only on the main rank (rank 0)."""
 
-    seed = int(hparams.seed)
-    _set_seed(seed)
+    if not dist_ctx.is_main:
+        return False
 
-    # Initialize wandb (fail-soft if not permitted)
     use_wandb, wandb_error = init_wandb(cfg, run_name=None, group=hparams.get("name", None))
     if not use_wandb and wandb_error is not None:
         logger.warning("WandB disabled due to error: {}", wandb_error)
@@ -240,44 +253,107 @@ def train(cfg: DictConfig) -> Path:
         is_sweep_run = getattr(getattr(wandb, "run", None), "sweep_id", None) is not None or os.getenv("WANDB_SWEEP_ID")
         if is_sweep_run:
             logger.info("W&B sweep objective: validation/accuracy (maximize)")
-    device = device_from_cfg(str(cfg.device))
 
-    train_ds = TrafficSignsDataset("train")
-    val_ds = TrafficSignsDataset("val")
+    return use_wandb
 
-    generator = torch.Generator()
-    generator.manual_seed(seed)
 
-    batch_size = int(hparams.training.batch_size)
-    epochs = int(hparams.training.epochs)
+def _build_loaders(
+    *,
+    train_ds: TrafficSignsDataset,
+    val_ds: TrafficSignsDataset,
+    batch_size: int,
+    generator: torch.Generator,
+    device: torch.device,
+    dist_ctx: Any,
+    seed: int,
+) -> tuple[DataLoader, DataLoader, DistributedSampler | None]:
+    """Build train/val DataLoaders and an optional DistributedSampler for training."""
 
     pin_memory = device.type == "cuda"
+
+    train_sampler: DistributedSampler | None = None
+    val_sampler: DistributedSampler | None = None
+    if dist_ctx.enabled:
+        train_sampler = DistributedSampler(
+            train_ds,
+            num_replicas=dist_ctx.world_size,
+            rank=dist_ctx.rank,
+            shuffle=True,
+            drop_last=False,
+            seed=seed,
+        )
+        val_sampler = DistributedSampler(
+            val_ds,
+            num_replicas=dist_ctx.world_size,
+            rank=dist_ctx.rank,
+            shuffle=False,
+            drop_last=False,
+            seed=seed,
+        )
+
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
-        shuffle=True,
+        shuffle=train_sampler is None,
+        sampler=train_sampler,
         generator=generator,
         pin_memory=pin_memory,
     )
     val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
+        shuffle=False,
+        sampler=val_sampler,
         generator=generator,
         pin_memory=pin_memory,
     )
+    return train_loader, val_loader, train_sampler
 
-    num_classes = len(torch.unique(train_ds.targets))
-    model = build_model(num_classes).to(device)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = instantiate(cfg.optimizer, lr=float(hparams.optimizer.lr), params=model.parameters())
+def _maybe_wrap_ddp(*, model: torch.nn.Module, device: torch.device, dist_ctx: Any) -> torch.nn.Module:
+    """Wrap model in DistributedDataParallel when enabled."""
+
+    if not dist_ctx.enabled:
+        return model
+
+    from torch.nn.parallel import DistributedDataParallel as DDP
+
+    if device.type == "cuda":
+        return DDP(model, device_ids=[dist_ctx.local_rank], output_device=dist_ctx.local_rank)
+    return DDP(model)
+
+
+def _train_epochs(
+    *,
+    cfg: DictConfig,
+    hparams: Any,
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    train_sampler: DistributedSampler | None,
+    criterion: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    dist_ctx: Any,
+    use_wandb: bool,
+    run_timestamp: datetime.datetime,
+) -> None:
+    """Run the training loop (rank-aware logging and W&B)."""
 
     use_torch_profiler = _bool_from_cfg(cfg, "profiling.torch.enabled", default=False)
     torch_profiler_steps = _int_from_cfg(cfg, "profiling.torch.steps", default=10)
     export_chrome = _bool_from_cfg(cfg, "profiling.torch.export_chrome", default=True)
     export_tensorboard = _bool_from_cfg(cfg, "profiling.torch.export_tensorboard", default=False)
 
+    if dist_ctx.enabled and use_torch_profiler:
+        logger.info("Disabling torch.profiler because distributed training is enabled.")
+        use_torch_profiler = False
+
+    epochs = int(hparams.training.epochs)
     for epoch in range(epochs):
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         if use_torch_profiler and epoch == 0:
             train_loss, train_acc = _run_profiled_epoch_zero(
                 cfg=cfg,
@@ -291,10 +367,6 @@ def train(cfg: DictConfig) -> Path:
                 criterion=criterion,
                 optimizer=optimizer,
             )
-        else:
-            train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-
-        if use_torch_profiler and epoch == 0:
             val_loss, val_acc = float("nan"), float("nan")
             logger.info(
                 "Skipping validation for profiled epoch 0 because training ran on a limited number of steps "
@@ -302,45 +374,109 @@ def train(cfg: DictConfig) -> Path:
                 torch_profiler_steps,
             )
         else:
+            train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
             val_loss, val_acc = validate(model, val_loader, criterion, device)
 
-        logger.info(
-            "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
-            epoch + 1,
-            epochs,
-            train_loss,
-            train_acc,
-            val_loss,
-            val_acc,
-        )
-        # Log metrics to wandb (if enabled)
-        if use_wandb:
-            import wandb  # type: ignore
-
-            wandb.log(
-                {
-                    "epoch": epoch + 1,
-                    "train/loss": train_loss,
-                    "train/accuracy": train_acc,
-                    "val/loss": val_loss,
-                    "val/accuracy": val_acc,
-                }
+        if dist_ctx.is_main:
+            logger.info(
+                "Epoch [{}/{}] | Train Loss: {:.4f} | Train Acc: {:.2f}% | Val Loss: {:.4f} | Val Acc: {:.2f}%",
+                epoch + 1,
+                epochs,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
             )
 
-    model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
-    model_out.parent.mkdir(parents=True, exist_ok=True)
-    torch.save(model.state_dict(), model_out)
-    logger.info("Model saved to: {}", model_out)
-    # Log model artifact to wandb (if enabled)
-    if use_wandb:
-        import wandb  # type: ignore
+            if use_wandb:
+                import wandb  # type: ignore
 
-        artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{run_timestamp.strftime('%Y%m%d-%H%M%S')}"
-        artifact = wandb.Artifact(artifact_name, type="model")
-        artifact.add_file(str(model_out))
-        wandb.log_artifact(artifact)
-        wandb.finish()
+                wandb.log(
+                    {
+                        "epoch": epoch + 1,
+                        "train/loss": train_loss,
+                        "train/accuracy": train_acc,
+                        "val/loss": val_loss,
+                        "val/accuracy": val_acc,
+                    }
+                )
+
+
+def _save_model_if_main(*, model: torch.nn.Module, cfg: DictConfig, dist_ctx: Any) -> Path:
+    """Save model state dict (rank 0 only) and return the output path."""
+
+    model_out = _resolve_path(BASE_DIR, str(cfg.paths.model_out))
+    if dist_ctx.is_main:
+        model_out.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(unwrap_model(model).state_dict(), model_out)
+        logger.info("Model saved to: {}", model_out)
     return model_out
+
+
+def train(cfg: DictConfig) -> Path:
+    """Train the traffic sign model using a Hydra configuration."""
+
+    dist_ctx, device = _setup_distributed(cfg)
+    run_timestamp = datetime.datetime.now()
+    _setup_logging(dist_ctx=dist_ctx, run_timestamp=run_timestamp)
+    logger.info("Configuration:\n{}", OmegaConf.to_yaml(cfg))
+
+    hparams = cfg.experiment
+    seed = int(hparams.seed)
+    _set_seed(seed + dist_ctx.rank)
+
+    use_wandb = _init_wandb_if_main(cfg=cfg, dist_ctx=dist_ctx, hparams=hparams)
+
+    train_ds = TrafficSignsDataset("train")
+    val_ds = TrafficSignsDataset("val")
+    generator = torch.Generator().manual_seed(seed)
+
+    batch_size = int(hparams.training.batch_size)
+    train_loader, val_loader, train_sampler = _build_loaders(
+        train_ds=train_ds,
+        val_ds=val_ds,
+        batch_size=batch_size,
+        generator=generator,
+        device=device,
+        dist_ctx=dist_ctx,
+        seed=seed,
+    )
+
+    num_classes = len(torch.unique(train_ds.targets))
+    model = _maybe_wrap_ddp(model=build_model(num_classes).to(device), device=device, dist_ctx=dist_ctx)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = instantiate(cfg.optimizer, lr=float(hparams.optimizer.lr), params=model.parameters())
+
+    try:
+        _train_epochs(
+            cfg=cfg,
+            hparams=hparams,
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            train_sampler=train_sampler,
+            criterion=criterion,
+            optimizer=optimizer,
+            device=device,
+            dist_ctx=dist_ctx,
+            use_wandb=use_wandb,
+            run_timestamp=run_timestamp,
+        )
+
+        model_out = _save_model_if_main(model=model, cfg=cfg, dist_ctx=dist_ctx)
+        if dist_ctx.is_main and use_wandb:
+            import wandb  # type: ignore
+
+            artifact_name = f"model-train-{hparams.get('name', 'unnamed')}-{run_timestamp.strftime('%Y%m%d-%H%M%S')}"
+            artifact = wandb.Artifact(artifact_name, type="model")
+            artifact.add_file(str(model_out))
+            wandb.log_artifact(artifact)
+            wandb.finish()
+
+        return model_out
+    finally:
+        cleanup_distributed(dist_ctx)
 
 
 @hydra.main(config_path=str(CONFIGS_DIR), config_name="config", version_base=None)
