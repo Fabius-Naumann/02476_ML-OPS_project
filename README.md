@@ -12,45 +12,61 @@ We will be training a CNN from scratch and might also try deploying a pre-traine
 
 The directory structure of the project looks like this:
 ```txt
-├── .github/                  # Github actions and dependabot
-│   ├── dependabot.yaml
-│   └── workflows/
-│       └── tests.yaml
-├── configs/                  # Configuration files
-├── data/                     # Data directory
-│   ├── processed
-│   └── raw
-├── dockerfiles/              # Dockerfiles
-│   ├── api.Dockerfile
-│   └── train.Dockerfile
-├── docs/                     # Documentation
-│   ├── mkdocs.yml
+├── 1README.md                # Exam checklist / template
+├── AGENTS.md                 # Instructions for autonomous coding agents
+├── command.md                # CLI usage examples
+├── data.dvc                  # DVC tracking for data/ directory
+├── configs/                  # Hydra configuration files
+│   ├── config.yaml
+│   ├── sweep.yaml
+│   ├── tensorboardprofiling.yaml
+│   └── experiment/
+│       ├── exp1.yaml
+│       └── exp2.yaml
+├── data/
+│   ├── processed/            # Preprocessed tensors (.pt) used by training
+│   └── raw/                  # Original traffic signs data and metadata
+├── dockerfiles/              # Dockerfiles for training and API
+│   ├── api.dockerfile
+│   └── train.dockerfile
+├── docs/                     # MkDocs documentation
+│   ├── mkdocs.yaml
+│   ├── README.md
 │   └── source/
 │       └── index.md
-├── models/                   # Trained models
-├── notebooks/                # Jupyter notebooks
-├── reports/                  # Reports
-│   └── figures/
-├── src/                      # Source code
-│   ├── project_name/
-│   │   ├── __init__.py
-│   │   ├── api.py
-│   │   ├── data.py
-│   │   ├── evaluate.py
-│   │   ├── models.py
-│   │   ├── train.py
-│   │   └── visualize.py
-└── tests/                    # Tests
-│   ├── __init__.py
-│   ├── test_api.py
-│   ├── test_data.py
-│   └── test_model.py
-├── .gitignore
-├── .pre-commit-config.yaml
+├── log/                      # Logs (e.g. API jobs)
+├── models/                   # Saved model weights
+├── notebooks/                # Exploratory notebooks
+├── outputs/                  # Training run outputs (per date / timestamp)
+├── reports/
+│   └── figures/              # Plots and figures
+├── src/
+│   └── sign_ml/              # Package with project source code
+│       ├── __init__.py
+│       ├── api.py            # FastAPI inference service
+│       ├── data.py           # Data loading and preprocessing
+│       ├── data_distributed.py
+│       ├── evaluate.py
+│       ├── merge_data.py
+│       ├── model.py          # CNN model definition
+│       ├── train.py          # Training entry point (DDP‑ready)
+│       ├── utils.py
+│       └── visualize.py
+├── tests/                    # Unit, integration and performance tests
+│   ├── integrationtests/
+│   │   └── test_api.py
+│   ├── performancetests/
+│   │   └── test_locustfile.py
+│   └── unittests/
+│       ├── __init__.py
+│       ├── test_data.py
+│       ├── test_data_distributed.py
+│       └── test_model.py
 ├── LICENSE
-├── pyproject.toml            # Python project file
-├── README.md                 # Project README
-└── tasks.py                  # Project tasks
+├── pyproject.toml            # Project metadata and dependencies
+├── README.md                 # This file
+├── ruff.toml                 # Ruff lint/format configuration
+└── tasks.py                  # Invoke tasks (lint, test, etc.)
 ```
 
 
