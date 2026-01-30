@@ -1,22 +1,21 @@
 from pathlib import Path
 
+import gcsfs
+import hydra
 import torch
 import torch.nn as nn
-import hydra
 from omegaconf import DictConfig
-import gcsfs
 
 from sign_ml.model import build_model
-from sign_ml.vertex_data import load_vertex_data
 from sign_ml.utils import device_from_cfg, init_wandb
+from sign_ml.vertex_data import load_vertex_data
 
 
 def upload_to_gcs(local_path: Path, gcs_path: str, project_id: str) -> None:
     print(f"Uploading file to GCS: {gcs_path}")
     fs = gcsfs.GCSFileSystem(project=project_id)
-    with local_path.open("rb") as f:
-        with fs.open(gcs_path, "wb") as gcs_file:
-            gcs_file.write(f.read())
+    with local_path.open("rb") as f, fs.open(gcs_path, "wb") as gcs_file:
+        gcs_file.write(f.read())
     print(f"Upload finished: {gcs_path}")
 
 
@@ -111,7 +110,6 @@ def main(cfg: DictConfig) -> None:
 
     gcs_base = f"gs://{cfg.gcp.bucket}/models/sign_ml"
 
-  
     local_pt = output_dir / "traffic_sign_model.pt"
     torch.save(
         {
