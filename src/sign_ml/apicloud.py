@@ -1,29 +1,22 @@
 from __future__ import annotations
 
-import datetime
 import io
 import os
-import subprocess
-import sys
-import threading
-import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import torch
 import gcsfs
+import torch
 from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from loguru import logger
 from PIL import Image
 from prometheus_client import generate_latest
-from pydantic import BaseModel
 from torchvision import transforms
 
 from sign_ml import BASE_DIR
 from sign_ml.model import build_model
 from sign_ml.observability import log_prediction, metrics_middleware
-
 
 IMAGE_FILE = File(...)
 DEFAULT_MODEL_PATH = BASE_DIR / "models" / "traffic_sign_model.pt"
@@ -42,9 +35,8 @@ def _resolve_model_path() -> Path:
     if gcs_path:
         print(f"Loading model from GCS: {gcs_path}")
         fs = gcsfs.GCSFileSystem()
-        with fs.open(gcs_path, "rb") as f:
-            with open(local_path, "wb") as out:
-                out.write(f.read())
+        with fs.open(gcs_path, "rb") as f, open(local_path, "wb") as out:
+            out.write(f.read())
         print(f"Model downloaded to {local_path}")
         return local_path
 
