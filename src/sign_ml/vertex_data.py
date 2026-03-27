@@ -1,6 +1,6 @@
-import torch
 import gcsfs
-from torch.utils.data import Dataset, DataLoader
+import torch
+from torch.utils.data import DataLoader, Dataset
 
 
 class VertexTrafficSignsDataset(Dataset):
