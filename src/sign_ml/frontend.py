@@ -1,7 +1,6 @@
-import streamlit as st
 import requests
+import streamlit as st
 from PIL import Image
-import io
 
 # --------------------------------------------------
 # BACKEND URL (ONLY CHANGE NEEDED)
@@ -10,6 +9,7 @@ BACKEND_URL = "https://sign-ml-apicloud-434286151372.europe-west4.run.app"
 
 HEALTH_URL = f"{BACKEND_URL}/health"
 PREDICT_URL = f"{BACKEND_URL}/predict"
+
 
 def get_class_name(class_id):
     """Map class ID to traffic sign name based on your dataset."""
@@ -65,16 +65,13 @@ def get_class_name(class_id):
         48: "Under Construction",
         49: "Uneven road ahead",
         50: "Fences",
-        51: "Heavy Vehicle Accidents"
+        51: "Heavy Vehicle Accidents",
     }
     return class_names.get(class_id, f"Unknown Sign (Class {class_id})")
 
+
 def main():
-    st.set_page_config(
-        page_title="Traffic Sign Classification",
-        page_icon="🚦",
-        layout="wide"
-    )
+    st.set_page_config(page_title="Traffic Sign Classification", page_icon="🚦", layout="wide")
 
     st.title("🚦 Traffic Sign Classification")
     st.markdown("Upload a traffic sign image to get real-time predictions from our ML model")
@@ -88,9 +85,7 @@ def main():
             health_data = health_response.json()
 
             if health_data.get("status") == "ok":
-                st.success(
-                    f"Backend is ready ✅ | Classes: {health_data.get('num_classes')}"
-                )
+                st.success(f"Backend is ready ✅ | Classes: {health_data.get('num_classes')}")
             else:
                 st.error("Backend is not ready")
                 st.stop()
@@ -109,7 +104,7 @@ def main():
         uploaded_file = st.file_uploader(
             "Choose a traffic sign image...",
             type=["jpg", "jpeg", "png"],
-            help="Upload an image file (JPG, JPEG, or PNG)"
+            help="Upload an image file (JPG, JPEG, or PNG)",
         )
 
         if uploaded_file is not None:
@@ -142,11 +137,7 @@ def main():
                         }
 
                         # Send request to backend
-                        response = requests.post(
-                            PREDICT_URL,
-                            files=files,
-                            timeout=30
-                        )
+                        response = requests.post(PREDICT_URL, files=files, timeout=30)
 
                         if response.status_code == 200:
                             result = response.json()
@@ -164,9 +155,7 @@ def main():
                             confidence = probabilities[predicted_class] * 100
 
                             st.metric(
-                                label="Predicted Traffic Sign",
-                                value=class_name,
-                                delta=f"{confidence:.1f}% confidence"
+                                label="Predicted Traffic Sign", value=class_name, delta=f"{confidence:.1f}% confidence"
                             )
 
                             # Show top 3 predictions
@@ -174,9 +163,7 @@ def main():
 
                             # Get top 3 classes
                             top_3_indices = sorted(
-                                range(len(probabilities)),
-                                key=lambda i: probabilities[i],
-                                reverse=True
+                                range(len(probabilities)), key=lambda i: probabilities[i], reverse=True
                             )[:3]
 
                             for idx in top_3_indices:
@@ -205,7 +192,7 @@ def main():
                     except requests.exceptions.Timeout:
                         st.error("❌ Request timed out. The backend might be slow or unavailable.")
                     except Exception as e:
-                        st.error(f"❌ An error occurred: {str(e)}")
+                        st.error(f"❌ An error occurred: {e!s}")
         else:
             st.info("👆 Upload an image to get started")
 
@@ -271,6 +258,7 @@ Backend admin endpoints available:
 - `/admin/train_sync` - Train model
 - `/admin/evaluate_sync` - Evaluate model
             """)
+
 
 if __name__ == "__main__":
     main()

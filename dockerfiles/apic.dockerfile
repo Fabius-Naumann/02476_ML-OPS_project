@@ -16,4 +16,3 @@ ENV PYTHONPATH=/app/src
 ENV PORT=8080
 
 CMD ["uv", "run", "uvicorn", "sign_ml.apicloud:app", "--host", "0.0.0.0", "--port", "8080"]
-
